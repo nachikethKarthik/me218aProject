@@ -49,6 +49,7 @@
       <itemPath>working_hals_libraries_and_fontstuff/DM_Display.h</itemPath>
       <itemPath>working_hals_libraries_and_fontstuff/PIC32_SPI_HAL.h</itemPath>
       <itemPath>working_hals_libraries_and_fontstuff/FontStuff.h</itemPath>
+      <itemPath>working_hals_libraries_and_fontstuff/PIC32_AD_Lib.h</itemPath>
     </logicalFolder>
     <logicalFolder name="LinkerScript"
                    displayName="Linker Files"
@@ -65,6 +66,7 @@
       <itemPath>working_hals_libraries_and_fontstuff/DM_Display.c</itemPath>
       <itemPath>working_hals_libraries_and_fontstuff/PIC32_SPI_HAL.c</itemPath>
       <itemPath>working_hals_libraries_and_fontstuff/FontStuff.c</itemPath>
+      <itemPath>working_hals_libraries_and_fontstuff/PIC32_AD_Lib.c</itemPath>
     </logicalFolder>
     <logicalFolder name="ExternalFiles"
                    displayName="Important Files"

@@ -16,6 +16,7 @@
  History
  When           Who     What/Why
  -------------- ---     --------
+ 11/11/25       karthi24     started adding event checker pseudocode
  08/06/13 13:36 jec     initial version
 ****************************************************************************/
 
@@ -37,54 +38,30 @@
 // are defined in ES_Port.c
 #include "ES_Port.h"
 // include our own prototypes to insure consistency between header &
-// actual functionsdefinition
+// actual functions definition
 #include "EventCheckers.h"
 
-// This is the event checking function sample. It is not intended to be
-// included in the module. It is only here as a sample to guide you in writing
-// your own event checkers
-#if 0
-/****************************************************************************
- Function
-   Check4Lock
- Parameters
-   None
- Returns
-   bool: true if a new event was detected
- Description
-   Sample event checker grabbed from the simple lock state machine example
- Notes
-   will not compile, sample only
- Author
-   J. Edward Carryer, 08/06/13, 13:48
-****************************************************************************/
-bool Check4Lock(void)
-{
-  static uint8_t  LastPinState = 0;
-  uint8_t         CurrentPinState;
-  bool            ReturnVal = false;
+#include <inttypes.h>
+static uint16_t Baselines[3] = {0,0,0}; // { AN12, AN5, AN4 }
+ 
+/*---------------------------- Module Variables ---------------------------*/
+// with the introduction of Gen2, we need a module level Priority variable
+/*----------------------------- Module Defines ----------------------------*/
 
-  CurrentPinState = LOCK_PIN;
-  // check for pin high AND different from last time
-  // do the check for difference first so that you don't bother with a test
-  // of a port/variable that is not going to matter, since it hasn't changed
-  if ((CurrentPinState != LastPinState) &&
-      (CurrentPinState == LOCK_PIN_HI)) // event detected, so post detected event
-  {
-    ES_Event ThisEvent;
-    ThisEvent.EventType   = ES_LOCK;
-    ThisEvent.EventParam  = 1;
-    // this could be any of the service post functions, ES_PostListx or
-    // ES_PostAll functions
-    ES_PostAll(ThisEvent);
-    ReturnVal = true;
-  }
-  LastPinState = CurrentPinState; // update the state for next time
+/*---------------------------- Module Functions ---------------------------*/
+/* prototypes for private functions for this service.They should be functions
+   relevant to the behavior of this service
+*/
 
-  return ReturnVal;
-}
+/* prototypes for public functions for this service.They should be functions
+   relevant to the behavior of this service
+*/
+/***************************************************************************
+ EventChecker functions
+ ***************************************************************************/
+void Targets_SetBaselines(uint16_t b12, uint16_t b5, uint16_t b4);
 
-#endif
+  
 
 /****************************************************************************
  Function
@@ -108,14 +85,102 @@ bool Check4Lock(void)
 ****************************************************************************/
 bool Check4Keystroke(void)
 {
-  if (IsNewKeyReady())   // new key waiting?
-  {
-    ES_Event_t ThisEvent;
-    ThisEvent.EventType   = ES_NEW_KEY;
-    ThisEvent.EventParam  = GetNewKey();
-    ES_PostAll(ThisEvent);
-    return true;
-  }
-  return false;
+    if (IsNewKeyReady())   // new key waiting?
+    {
+      ES_Event_t ThisEvent;
+      ThisEvent.EventType   = ES_NEW_KEY;
+      ThisEvent.EventParam  = GetNewKey();
+      ES_PostAll(ThisEvent);
+      return true;
+    }
+    return false;
 }
+
+
+bool Check4HandWave(void){
+    static uint8_t last = 1;                  // idle high (beam unbroken)
+    uint8_t cur = BEAM_BREAK_PORT;            // direct register read
+
+    if ((cur != last) && (cur == 0)){         // falling edge = beam broken
+        ES_Event_t e = { .EventType = ES_HAND_WAVE_DETECTED };
+        PostGameSM(e);
+        last = cur;
+        return true;
+    }
+    last = cur;
+    return false;
+}
+ 
+bool Check4Difficulty(void){
+//    With the values configured in ADC_ConfigAutoScan, the ADC_MultiRead() array indices are :
+//            idx_AN4 = 0
+//            idx_AN5 = 1
+//            idx_AN11 = 2
+//            idx_AN12 = 3
+    
+    static uint8_t lastPct = 255; // set a random value initially  
+    uint32_t adc[8];                         
+    ADC_MultiRead(adc);                      // reads 8 channels and stores the values
+
+    const uint16_t raw = (uint16_t)adc[2];   // AN11
+    // map 10-bit raw (0..1023) to 0..100% with a tiny low-pass (optional)
+    uint8_t pct = (uint8_t)((raw * 100u + 511u) / 1023u); // with rounding math
+    
+    // 2% deadband
+    if (lastPct == 255 || pct > (lastPct+2) || (pct < (lastPct-2))){
+//  Post a change in difficulty only if the difficulty changes by more than 2%
+        ES_Event_t e = { .EventType = ES_DIFFICULTY_CHANGED, .EventParam = pct };
+        PostGameSM(e);                         
+        lastPct = pct;
+        return true;
+    }
+    return false;
+}
+
+
+// Start here: Change the logic for this function tomorrow
+bool Check4LaserHits(void){
+    static uint8_t hitLast[3] = {0,0,0};
+    
+    uint32_t adc[8];
+    ADC_MultiRead(adc);                      
+
+    // channel order from scan set: [0]=AN4, [1]=AN5, [2]=AN11, [3]=AN12
+    const uint16_t an12 = (uint16_t)adc[3];
+    const uint16_t an5  = (uint16_t)adc[1];
+    const uint16_t an4  = (uint16_t)adc[0];
+
+    const uint16_t v[3] = {an12, an5, an4};
+
+    // per-channel hysteresis around baseline (tune these)
+    const uint16_t HI = 80;   // counts above base to declare hit
+    const uint16_t LO = 40;   // counts above base to clear hit
+
+    bool any = false;
+    for(int i=0;i<3;i++){
+      uint8_t hitNow = hitLast[i];
+      if (v[i] > (uint16_t)(Baselines[i] + HI))      hitNow = 1;
+      else if (v[i] < (uint16_t)(Baselines[i] + LO)) hitNow = 0;
+
+      if (hitNow != hitLast[i]){
+        ES_Event_t e = { .EventType = hitNow ? (DIRECT_HIT_B1 + i) : (NO_HIT_B1 + i) };
+        PostGameSM(e);                          // or PostGameSM(e)
+        hitLast[i] = hitNow;
+        any = true;
+      }
+    }
+    return false;
+}
+
+/***************************************************************************
+ public functions
+ ***************************************************************************/
+void Targets_SetBaselines(uint16_t b12, uint16_t b5, uint16_t b4){
+  Baselines[0] = b12;  // AN12
+  Baselines[1] = b5;   // AN5
+  Baselines[2] = b4;   // AN4
+}
+
+
+
 

@@ -16,11 +16,18 @@
 #define EventCheckers_H
 
 // the common headers for C99 types
-#include <stdint.h>
+//#include <stdint.h>
 #include <stdbool.h>
-
+#include "PIC32_AD_Lib.h"
 // prototypes for event checkers
 
 bool Check4Keystroke(void);
+
+bool Check4HandWave(void);
+bool Check4Difficulty(void);
+bool Check4LaserHits(void);
+
+
+void Targets_SetBaselines(uint16_t b12, uint16_t b5, uint16_t b4);
 
 #endif /* EventCheckers_H */
