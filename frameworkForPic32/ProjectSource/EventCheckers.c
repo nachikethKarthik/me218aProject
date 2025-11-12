@@ -16,6 +16,7 @@
  History
  When           Who     What/Why
  -------------- ---     --------
+ 11/12/25       karthi24     adding code/pseudocode for the final event checker
  11/11/25       karthi24     started adding event checker pseudocode
  08/06/13 13:36 jec     initial version
 ****************************************************************************/
@@ -138,38 +139,69 @@ bool Check4Difficulty(void){
 }
 
 
-// Start here: Change the logic for this function tomorrow
+
 bool Check4LaserHits(void){
-    static uint8_t hitLast[3] = {0,0,0};
     
+    //Balloon mapping:
+    //
+    //B1 ? AN12
+    //B2 ? AN5
+    //B3 ? AN4
+    
+    static uint8_t isHit[3] = {0,0,0};   // 0 = currently ?no hit? plateau, 1 = ?hit? plateau
+
     uint32_t adc[8];
-    ADC_MultiRead(adc);                      
+    ADC_MultiRead(adc);
 
     // channel order from scan set: [0]=AN4, [1]=AN5, [2]=AN11, [3]=AN12
-    const uint16_t an12 = (uint16_t)adc[3];
-    const uint16_t an5  = (uint16_t)adc[1];
-    const uint16_t an4  = (uint16_t)adc[0];
+    const uint16_t an12 = (uint16_t)adc[3];   // B1
+    const uint16_t an5  = (uint16_t)adc[1];   // B2
+    const uint16_t an4  = (uint16_t)adc[0];   // B3
 
-    const uint16_t v[3] = {an12, an5, an4};
+    const uint16_t v[3] = { an12, an5, an4 };
 
-    // per-channel hysteresis around baseline (tune these)
-    const uint16_t HI = 80;   // counts above base to declare hit
-    const uint16_t LO = 40;   // counts above base to clear hit
+    // margins relative to baseline
+    // when signal climbs above (baseline + HIT_DELTA) from below ? rising edge
+    // when signal falls below (baseline + RELEASE_DELTA) from above ? falling edge
+    const uint16_t HIT_DELTA     = 80;   // ?clearly above baseline? (tuneable parameters)
+    const uint16_t RELEASE_DELTA = 20;   // ?back near baseline? (tuneable parameters)
 
     bool any = false;
-    for(int i=0;i<3;i++){
-      uint8_t hitNow = hitLast[i];
-      if (v[i] > (uint16_t)(Baselines[i] + HI))      hitNow = 1;
-      else if (v[i] < (uint16_t)(Baselines[i] + LO)) hitNow = 0;
 
-      if (hitNow != hitLast[i]){
-        ES_Event_t e = { .EventType = hitNow ? (DIRECT_HIT_B1 + i) : (NO_HIT_B1 + i) };
-        PostGameSM(e);                          // or PostGameSM(e)
-        hitLast[i] = hitNow;
-        any = true;
-      }
+    for (int i = 0; i < 3; i++) {
+
+        // --- Rising edge: NO HIT plateau ? HIT plateau ---
+        if (isHit[i] == 0) {
+            // we are currently in "no hit" state, look for jump above baseline
+            if (v[i] > (uint16_t)(Baselines[i] + HIT_DELTA)) {
+                isHit[i] = 1;  // now in HIT plateau
+
+                ES_Event_t e;
+                e.EventType = (DIRECT_HIT_B1 + i);   // B1/B2/B3
+                e.EventParam = 0;
+                PostGameSM(e);
+
+                any = true;
+            }
+        }
+
+        // --- Falling edge: HIT plateau ? NO HIT plateau ---
+        else { // isHit[i] == 1
+            // we are currently in "hit" state, look for drop back near baseline
+            if (v[i] < (uint16_t)(Baselines[i] + RELEASE_DELTA)) {
+                isHit[i] = 0;  // now in NO HIT plateau
+
+                ES_Event_t e;
+                e.EventType = (NO_HIT_B1 + i);       // B1/B2/B3
+                e.EventParam = 0;
+                PostGameSM(e);
+
+                any = true;
+            }
+        }
     }
-    return false;
+
+    return any;
 }
 
 /***************************************************************************
