@@ -618,7 +618,8 @@ void SPIOperate_SPI1_Send8Wait(uint8_t TheData)
     for the SS1 line to rise. NOTE: this is blocking code and should only be
     used when the bit-time on the SPI is sufficiently fast so as need to wait
     less than 200 micro-seconds to complete.
-    Does not check if there is room in the buffer.
+    Does not check if there is room in theiently fast so as need to wait
+    less than 200 micro-seconds to complete. buffer.
   Note: separate functions provided for SPI1 & SPI2 in order to speed operation
   and allow the SPI to be run at higher bit rates
 ****************************************************************************/

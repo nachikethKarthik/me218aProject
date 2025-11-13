@@ -208,9 +208,9 @@ bool Check4LaserHits(void){
  public functions
  ***************************************************************************/
 void Targets_SetBaselines(uint16_t b12, uint16_t b5, uint16_t b4){
-  Baselines[0] = b12;  // AN12
-  Baselines[1] = b5;   // AN5
-  Baselines[2] = b4;   // AN4
+  Baselines[0] = b12;  // B1 ? AN12
+  Baselines[1] = b5;   // B2 ? AN5
+  Baselines[2] = b4;   // B3 ? AN4
 }
 
 

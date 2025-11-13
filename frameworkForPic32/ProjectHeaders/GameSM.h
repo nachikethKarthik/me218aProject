@@ -51,10 +51,5 @@ bool PostGameSM(ES_Event_t ThisEvent);
 ES_Event_t RunGameSM(ES_Event_t ThisEvent);
 GameState_t QueryGameSM(void);
 
-
-void LED_ShowWelcome(void);
-void LED_ShowCountdown(uint8_t seconds_remaining);
-void DispenseTwoGearsOnce(void);
-
 #endif /* GameSM_H */
 
