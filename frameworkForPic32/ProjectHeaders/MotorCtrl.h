@@ -1,12 +1,12 @@
 /****************************************************************************
 
-  Header file for BalloonCtrl service
+  Header file for MotorCtrl service
   based on the Gen 2 Events and Services Framework
 
  ****************************************************************************/
 
-#ifndef BalloonCtrl_H
-#define BalloonCtrl_H
+#ifndef MotorCtrl_H
+#define MotorCtrl_H
 
 #include "ES_Types.h"
 
@@ -19,15 +19,25 @@ typedef struct {
   int32_t  ceiling_ticks;   // top limit
 } Axis_t;
 
+// State machine used to handle gear dispensing. typedef below has the states for it
+typedef enum {
+  GEAR_IDLE,
+  GEAR_GOING_TO_DISPENSE,
+  GEAR_GOING_TO_REST
+} GearDispenseState_t;
+
+static GearDispenseState_t GearState = GEAR_IDLE;
+
 // Public Function Prototypes
-void BC_SetDifficultyPercent(uint8_t pct);         // sets per-axis max_step
-void BC_CommandRise(uint8_t idx);
-void BC_CommandFall(uint8_t idx);
-void BC_RaiseAllToTop(void);
+void MC_SetDifficultyPercent(uint8_t pct);         // sets per-axis max_step
+void MC_CommandRise(uint8_t idx);
+void MC_CommandFall(uint8_t idx);
+void MC_RaiseAllToTop(void);
+void MC_DispenseTwoGearsOnce(void);
 
-bool InitBalloonCtrl(uint8_t Priority);
-bool PostBalloonCtrl(ES_Event_t ThisEvent);
-ES_Event_t RunBalloonCtrl(ES_Event_t ThisEvent);
+bool InitMotorCtrl(uint8_t Priority);
+bool PostMotorCtrl(ES_Event_t ThisEvent);
+ES_Event_t RunMotorCtrl(ES_Event_t ThisEvent);
 
-#endif /* BalloonCtrl_H */
+#endif /* MotorCtrl_H */
 

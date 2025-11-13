@@ -45,11 +45,12 @@
       <itemPath>ProjectHeaders/EventCheckers.h</itemPath>
       <itemPath>ProjectHeaders/TestHarnessService0.h</itemPath>
       <itemPath>ProjectHeaders/GameSM.h</itemPath>
-      <itemPath>ProjectHeaders/BalloonCtrl.h</itemPath>
       <itemPath>working_hals_libraries_and_fontstuff/DM_Display.h</itemPath>
       <itemPath>working_hals_libraries_and_fontstuff/PIC32_SPI_HAL.h</itemPath>
       <itemPath>working_hals_libraries_and_fontstuff/FontStuff.h</itemPath>
       <itemPath>working_hals_libraries_and_fontstuff/PIC32_AD_Lib.h</itemPath>
+      <itemPath>working_hals_libraries_and_fontstuff/PWM_PIC32.h</itemPath>
+      <itemPath>ProjectHeaders/MotorCtrl.h</itemPath>
     </logicalFolder>
     <logicalFolder name="LinkerScript"
                    displayName="Linker Files"
@@ -62,11 +63,12 @@
       <itemPath>ProjectSource/TestHarnessService0.c</itemPath>
       <itemPath>ProjectSource/main.c</itemPath>
       <itemPath>ProjectSource/GameSM.c</itemPath>
-      <itemPath>ProjectSource/BalloonCtrl.c</itemPath>
       <itemPath>working_hals_libraries_and_fontstuff/DM_Display.c</itemPath>
       <itemPath>working_hals_libraries_and_fontstuff/PIC32_SPI_HAL.c</itemPath>
       <itemPath>working_hals_libraries_and_fontstuff/FontStuff.c</itemPath>
       <itemPath>working_hals_libraries_and_fontstuff/PIC32_AD_Lib.c</itemPath>
+      <itemPath>working_hals_libraries_and_fontstuff/PWM_PIC32.c</itemPath>
+      <itemPath>ProjectSource/MotorCtrl.c</itemPath>
     </logicalFolder>
     <logicalFolder name="ExternalFiles"
                    displayName="Important Files"

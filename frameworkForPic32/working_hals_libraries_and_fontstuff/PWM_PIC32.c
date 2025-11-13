@@ -27,7 +27,7 @@
 #define TIMER_DIV 8
 // TICS_PER_MS assumes a 20MHz PBClk /8 = 2.5MHz clock rate
 #define TICS_PER_MS 2500
-// a servo wants to see a 50Hz or 20ms period
+// a servo wants to see a 50Hz or 20ms period (units of ticks per 20 milliseconds)
 #define SERVO_PERIOD  (20*TICS_PER_MS)
 
 // these limits derive from a 20Mhz PBClk divided by 8 and a 16 bit timer

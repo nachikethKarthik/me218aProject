@@ -67,9 +67,9 @@
 // These are the definitions for Service 2
 #if NUM_SERVICES > 2
 
-    #define SERV_2_HEADER "BalloonCtrl.h"
-    #define SERV_2_INIT   InitBalloonCtrl
-    #define SERV_2_RUN    RunBalloonCtrl
+    #define SERV_2_HEADER "MotorCtrl.h"
+    #define SERV_2_INIT   InitMotorCtrl
+    #define SERV_2_RUN    RunMotorCtrl
     #define SERV_2_QUEUE_SIZE 3
 
 #endif
@@ -312,8 +312,8 @@ typedef enum
 #define TIMER1_RESP_FUNC PostGameSM   // 20s inactivity
 #define TIMER2_RESP_FUNC PostGameSM   // 1s tick
 #define TIMER3_RESP_FUNC PostGameSM   // 3s mode end
-#define TIMER4_RESP_FUNC PostBalloonCtrl // 20 ms motion
-#define TIMER5_RESP_FUNC TIMER_UNUSED
+#define TIMER4_RESP_FUNC PostMotorCtrl // 20 ms motion
+#define TIMER5_RESP_FUNC PostGameSM
 #define TIMER6_RESP_FUNC TIMER_UNUSED
 #define TIMER7_RESP_FUNC TIMER_UNUSED
 #define TIMER8_RESP_FUNC TIMER_UNUSED
@@ -338,8 +338,8 @@ typedef enum
 #define TID_INACTIVITY_20S  1
 #define TID_TICK_1S         2
 #define TID_MODE_3S         3
-#define TID_BALLOON_20MS    4
+#define TID_BALLOON_UPDATE    4 
+#define TID_GEAR_SERVO      5 // used to control the wait time between positions of the gear dispensing servo
 #define SERVICE0_TIMER 15
-
 
 #endif /* ES_CONFIGURE_H */
