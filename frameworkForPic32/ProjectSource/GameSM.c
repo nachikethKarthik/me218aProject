@@ -14,6 +14,7 @@
  History
  When           Who     What/Why
  -------------- ---     --------
+ 11/13/25   karthi24    began integration testing
  11/12/25   karthi24    started conversion into final code
  11/11/25   karthi24    started adding more states into the pseudocode
  11/10/25   karthi24    started conversion into GameSM.c
@@ -37,6 +38,8 @@
 #include "PWM_PIC32.h"
 
 /*----------------------------- Module Defines ----------------------------*/
+#define START_IN_TEST_MODE // used for debugging and testing modules in the state machine, comment out for final functionality
+
 #define GEAR_SERVO_CHANNEL      1u
 #define SERVO_US_TO_TICKS(us)   ((uint16_t)(((us) * 5u) / 2u)) // 0.4 µs per tick
 // dwell times for gear dispensing(how long to wait at each position)
@@ -72,6 +75,7 @@ static uint8_t     SecondsLeft;
 // g stands for guard, GS stands for Game State, BC stands for Balloon control
 static bool g_LedPushPending = false;
 static bool        g_DisplayInitDone = false;
+static bool g_SPI_InitDone = false;
 
 // with the introduction of Gen2, we need a module level Priority var as well
 static uint8_t MyPriority;
@@ -100,9 +104,21 @@ bool InitGameSM(uint8_t Priority)
     ES_Event_t e = { .EventType = ES_INIT };
 
     MyPriority = Priority;
-
+    
+    if (!g_SPI_InitDone){
+        LED_SPI_Init();
+        //printf("spi initialized\r\n");
+        g_SPI_InitDone = true;
+    }
+    
+    GameHW_InitPins();
+    
+    #ifdef START_IN_TEST_MODE
+    CurrentState = GS_TestMode;
+    #else
     CurrentState = GS_InitPState;
-
+    #endif
+    printf("Init function complete\n\r");
     return ES_PostToService(MyPriority, e);   
 }
 
@@ -148,9 +164,10 @@ bool PostGameSM(ES_Event_t ThisEvent)
 ES_Event_t RunGameSM(ES_Event_t ThisEvent)
 {
     ES_Event_t ReturnEvent = { .EventType = ES_NO_EVENT };
-    
+     printf("Entering RunGameSM because of event: %lu\r\n", ThisEvent.EventType);
     // Global handler: row-by-row LED update: handled regardless of CurrentState
     if (ThisEvent.EventType == ES_LED_PUSH_STEP){
+//        printf("Pushing to LED\r\n");
         if (g_LedPushPending){
             bool done = DM_TakeDisplayUpdateStep();   // sends 1 row this call 
             if (!done){
@@ -164,45 +181,14 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
         return ReturnEvent;
     }
     
-    // Global handler: --- Gear servo mini-state machine: handled regardless of CurrentState ---
-    if (ThisEvent.EventType == ES_TIMEOUT &&
-        ThisEvent.EventParam == TID_GEAR_SERVO) {
-
-        uint16_t restTicks     = SERVO_US_TO_TICKS(GEAR_SERVO_REST_US);
-        uint16_t dispenseTicks = SERVO_US_TO_TICKS(GEAR_SERVO_DISPENSE_US);
-
-        switch (GearState) {
-          case GEAR_GOING_TO_DISPENSE:
-            // Now command DISPENSE position and schedule return to rest
-            PWMOperate_SetPulseWidthOnChannel(dispenseTicks, GEAR_SERVO_CHANNEL);
-            GearState = GEAR_GOING_TO_REST;
-            ES_Timer_InitTimer(TID_GEAR_SERVO, GEAR_DWELL_TO_REST_MS);
-            break;
-
-          case GEAR_GOING_TO_REST:
-            // Return to REST and finish the sequence
-            PWMOperate_SetPulseWidthOnChannel(restTicks, GEAR_SERVO_CHANNEL);
-            GearState = GEAR_IDLE;
-            break;
-
-          default:
-            // If timer fires unexpectedly, just force idle
-            GearState = GEAR_IDLE;
-            break;
-        }
-
-        // We handled the event; no need to feed it into the main state machine.
-        return ReturnEvent;
-    }
-    
     switch (CurrentState)
     {
         case GS_InitPState:        // If current state is initial Psedudo State
         {
+            //
             if (ThisEvent.EventType == ES_INIT)    // only respond to ES_Init
             {
-                // Initialize SPI and LED display
-                LED_SPI_Init();
+                
                 
                 // --- Non-blocking display init sequence ---
                 if (!g_DisplayInitDone) {
@@ -222,14 +208,14 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                     g_DisplayInitDone = true;
                 }
                 
-                GameHW_InitPins();
                 
+
                 // Capture baselines for ALS-PT19 sensors once at boot
                 CaptureALS_Baselines_Init();
                 
                 LED_ShowWelcome();
                 MC_RaiseAllToTop();
-                CurrentState = GS_Welcome;
+                CurrentState = GS_WaitingForHandWave;
             }
         }break;
 
@@ -242,17 +228,18 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                   MC_SetDifficultyPercent(pct);     // update motion speeds
               }break;
 
-              case ES_HAND_WAVE_DETECTED: // from event checker
-                  SecondsLeft = 60;
-                  LED_ShowCountdown(SecondsLeft);
-                  // Start timers: 60s gameplay, 20s inactivity, 1s tick
-                  ES_Timer_InitTimer(TID_GAME_60S,     60000);
-                  ES_Timer_InitTimer(TID_INACTIVITY_20S, 20000);
-                  ES_Timer_InitTimer(TID_TICK_1S,       1000);
-                  // Begin falling all balloons
-                  MC_CommandFall(1); MC_CommandFall(2); MC_CommandFall(3);
-                  CurrentState = GS_Gameplay;
-                  break;
+//              case ES_HAND_WAVE_DETECTED: // from event checker
+//                  SecondsLeft = 60;
+//                  LED_ShowCountdown(SecondsLeft);
+//                  // Start timers: 60s gameplay, 20s inactivity, 1s tick
+//                  ES_Timer_InitTimer(TID_GAME_60S,     60000);
+//                  ES_Timer_InitTimer(TID_INACTIVITY_20S, 20000);
+//                  ES_Timer_InitTimer(TID_TICK_1S,       1000);
+//                  // Begin falling all balloons
+//                  MC_CommandFall(1); MC_CommandFall(2); MC_CommandFall(3);
+////                  CurrentState = GS_Gameplay;
+//                  CurrentState = GS_TestMode;
+//                  break;
                   
             }break;
             
@@ -328,6 +315,115 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
             }
         }break;
         
+        case GS_TestMode: {
+            // entering calibration mode this stops motor ctrl:
+//            ES_Timer_StopTimer(TID_BALLOON_UPDATE);  // MotorCtrl won?t run updates 
+            printf("Entering test mode because of event: %lu\r\n", ThisEvent.EventType);
+            switch (ThisEvent.EventType) {
+                case ES_NEW_KEY: {
+                        char k = (char)ThisEvent.EventParam;
+
+                        switch (k) {
+                            
+                            case '1':
+                                printf("testing the GS_WaitingForHandWave state\r\n");
+                                
+                                break;
+                            
+                            case '2':
+                                printf("testing the beam break sensor\r\n");
+                                printf("value at digital input is : %lu\r\n",
+                                       BEAM_BREAK_PORT);
+                                break;
+                            
+                            case '3':{   // difficulty changed event checker test
+                                // read ADCs once and print
+                                GameHW_InitPins();
+                                
+                            }break;
+                            
+                            
+                            case 'm':
+                                printf("testing servo motors\r\n");
+                                // 500-2500 us for the SKU: 2000-0025-0504 super speed servo
+                                // 437-2637 us for the SKU: 31318 HS-318 servo
+                                static uint16_t TestPulseUs    = 2000; // 500-2500 us for the SKU: 2000-0025-0504 super speed
+                                uint16_t ticks = SERVO_US_TO_TICKS(TestPulseUs);
+                                
+                                printf("Commanding Channel 3 OC3 pin 10. Motor for B1. Commanding it to pwm microsecond value %lu\r\n", TestPulseUs);
+                                PWMOperate_SetPulseWidthOnChannel(ticks, B1_SERVO_CHANNEL);
+                                // similar print state
+                                break;
+                            
+                            case 'a':{   // analog test
+                                // read ADCs once and print
+                                GameHW_InitPins();
+                                uint32_t adc[8];
+                                ADC_MultiRead(adc);
+                                printf("AN11(slider)=%lu AN12(B1)=%lu AN5(B2)=%lu AN4(B3)=%lu\r\n",
+                                       adc[2], adc[3], adc[1], adc[0]);
+                            }break;
+                            
+
+                            case '8':   // move B1 up : Requires re-enabling of the motor control timer
+                                MC_CommandRise(1);
+                                printf("B1 rise\r\n");
+                                break;
+
+                            case 'q':   // move B1 down : Requires re-enabling of the motor control timer
+                                MC_CommandFall(1);
+                                printf("B1 fall\r\n");
+                                break;
+
+                            case '9':   // B2 up : Requires re-enabling of the motor control timer
+                                MC_CommandRise(2);
+                                printf("B2 rise\r\n");
+                                break;
+
+                            case 'w':   // B2 down : Requires re-enabling of the motor control timer
+                                MC_CommandFall(2);
+                                printf("B2 fall\r\n");
+                                break;
+
+                            case 'f':   // B3 up : Requires re-enabling of the motor control timer
+                                MC_CommandRise(3);
+                                printf("B3 rise\r\n");
+                                break;
+
+                            case 'e':   // B3 down : Requires re-enabling of the motor control timer
+                                MC_CommandFall(3);
+                                printf("B3 fall\r\n");
+                                break;
+
+                            case 'g':   // test gear dispenser
+                                MC_DispenseTwoGearsOnce();
+                                printf("Dispense test\r\n");
+                                break;
+                            
+                            
+
+                            case 'd':   // dump positions
+                                MC_DebugPrintAxes();
+                                break;
+
+                            case 'x':   // leave test mode, run actual game
+                                LED_ShowWelcome();
+                                CurrentState = GS_WaitingForHandWave;
+                                printf("Exiting TestMode and restarting motor Ctrl timer ? WaitingForHandWave\r\n");
+                                ES_Timer_StartTimer(TID_BALLOON_UPDATE);  // Restart MotorCtrl timer
+                                break;
+                        }//switch (k)
+                        
+                }break; //case ES_NEW_KEY:
+
+                default:
+                // ignore other events in TestMode
+                break;
+                
+            }//switch (ThisEvent.EventType)
+            
+        } break; // case GS_TestMode:
+        
         default: break;
         
     }
@@ -366,7 +462,7 @@ GameState_t QueryGameSM(void)
 static void GameHW_InitPins(void){
     // --- Beam-break: digital input, pull-up, digital mode ---
     BEAM_BREAK_TRIS = 1;
-    BEAM_BREAK_CNPU = 1;
+    BEAM_BREAK_CNPU = 0;
     
 
     // --- Slider (AN11): analog input ---

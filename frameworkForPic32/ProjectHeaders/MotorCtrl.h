@@ -10,6 +10,13 @@
 
 #include "ES_Types.h"
 
+
+// Servo channel mapping
+#define GEAR_SERVO_CHANNEL  1u      // OC1 -> RPB15 ->
+#define B1_SERVO_CHANNEL    3u      // OC3 -> RPA3 -> pin 10
+#define B2_SERVO_CHANNEL    4u      // OC4 -> RPA4 -> pin 
+#define B3_SERVO_CHANNEL    5u      // OC5 -> RPA2
+
 //typedefs
 typedef struct {
   int32_t  pos_ticks;       // current estimated position (ticks or degrees*10)
@@ -19,21 +26,14 @@ typedef struct {
   int32_t  ceiling_ticks;   // top limit
 } Axis_t;
 
-// State machine used to handle gear dispensing. typedef below has the states for it
-typedef enum {
-  GEAR_IDLE,
-  GEAR_GOING_TO_DISPENSE,
-  GEAR_GOING_TO_REST
-} GearDispenseState_t;
-
-static GearDispenseState_t GearState = GEAR_IDLE;
 
 // Public Function Prototypes
-void MC_SetDifficultyPercent(uint8_t pct);         // sets per-axis max_step
+void MC_SetDifficultyPercent(uint8_t pct); // sets per-axis max_step
 void MC_CommandRise(uint8_t idx);
 void MC_CommandFall(uint8_t idx);
 void MC_RaiseAllToTop(void);
 void MC_DispenseTwoGearsOnce(void);
+void MC_DebugPrintAxes(void);
 
 bool InitMotorCtrl(uint8_t Priority);
 bool PostMotorCtrl(ES_Event_t ThisEvent);

@@ -37,23 +37,34 @@
 // PBCLK = 20 MHz, /8 = 2.5 MHz -> 0.4 µs per tick
 #define SERVO_US_TO_TICKS(us)   ((uint16_t)(((us) * 5u) / 2u))
 
-// Balloon servo range (tunable parameter)
-#define BALLOON_MIN_US    1000u
-#define BALLOON_MAX_US    2000u
+
+// B1 servo position (tunable parameter)
+#define B1_MIN_US      1000u
+#define B1_MAX_US      2000u
+
+#define B1_MIN_TICKS   SERVO_US_TO_TICKS(B1_MIN_US)
+#define B1_MAX_TICKS   SERVO_US_TO_TICKS(B1_MAX_US)
+
+// B2 servo position (tunable parameter)
+#define B2_MIN_US      1000u
+#define B2_MAX_US      2000u
+
+#define B2_MIN_TICKS   SERVO_US_TO_TICKS(B2_MIN_US)
+#define B2_MAX_TICKS   SERVO_US_TO_TICKS(B2_MAX_US)
+
+// B3 servo position (tunable parameter)
+#define B3_MIN_US      1000u
+#define B3_MAX_US      2000u
+
+#define B3_MIN_TICKS   SERVO_US_TO_TICKS(B3_MIN_US)
+#define B3_MAX_TICKS   SERVO_US_TO_TICKS(B3_MAX_US)
+
+
 
 // Gear servo positions (tunable parameter)
-#define GEAR_SERVO_REST_US      1500u
-#define GEAR_SERVO_DISPENSE_US  2100u
+#define GEAR_SERVO_REST_US      600u
+#define GEAR_SERVO_DISPENSE_US  2000u
 
-// Servo channel mapping
-#define GEAR_SERVO_CHANNEL  1u      // OC1 -> RPB15
-#define B1_SERVO_CHANNEL    3u      // OC3 -> RPA3
-#define B2_SERVO_CHANNEL    4u      // OC4 -> RPA4
-#define B3_SERVO_CHANNEL    5u      // OC5 -> RPA2
-
-// Gear servo positions & dwell (tunable parameter)
-#define GEAR_SERVO_REST_US      1500u
-#define GEAR_SERVO_DISPENSE_US  2100u
 /*---------------------------- Module Functions ---------------------------*/
 /* prototypes for private functions for this service.They should be functions
    relevant to the behavior of this service
@@ -72,7 +83,7 @@ void MC_CommandFall(uint8_t idx);
 // with the introduction of Gen2, we need a module level Priority variable
 static uint8_t MyPriority;
 static Axis_t Ax[3]; // each axis has one balloon
-
+static bool g_crashed = false;
 /*------------------------------ Module Code ------------------------------*/
 /****************************************************************************
  Function
@@ -102,16 +113,19 @@ bool InitMotorCtrl(uint8_t Priority)
     
     MotorHW_InitServos();
     
+    // Per-balloon calibration in ticks
+    const uint16_t minTicks[3] = { B1_MIN_TICKS, B2_MIN_TICKS, B3_MIN_TICKS };
+    const uint16_t maxTicks[3] = { B1_MAX_TICKS, B2_MAX_TICKS, B3_MAX_TICKS };
+    
     // Init balloon axes (you?ll tune these values)
     for (uint8_t i = 0; i < 3; i++){
-        Ax[i].pos_ticks     = 0;
-        Ax[i].tgt_ticks     = 0;
-        Ax[i].max_step      = 1;      // will be set from difficulty
-        Ax[i].floor_ticks   = 0;      // TODO: set real floor : tunable parameter
-        Ax[i].ceiling_ticks = 1000;   // TODO: set real ceiling : tunable parameter
-    }
+        Ax[i].floor_ticks   = minTicks[i];   // bottom for this balloon (ticks)
+        Ax[i].ceiling_ticks = maxTicks[i];   // top for this balloon (ticks)
 
-    GearState = GEAR_IDLE;
+        Ax[i].pos_ticks     = Ax[i].ceiling_ticks; // start all at top
+        Ax[i].tgt_ticks     = Ax[i].ceiling_ticks;
+        Ax[i].max_step      = 50;                  // will be overridden by MC_SetDifficultyPercent
+    }
     /********************************************
     in here you write your initialization code
     *******************************************/
@@ -167,51 +181,43 @@ ES_Event_t RunMotorCtrl(ES_Event_t ThisEvent)
     if(ThisEvent.EventType == ES_TIMEOUT && ThisEvent.EventParam == TID_BALLOON_UPDATE){
         
         // Slew each axis toward target
-        for (uint8_t i=0;i<3;i++){
+        const uint8_t chan[3] = { B1_SERVO_CHANNEL, B2_SERVO_CHANNEL, B3_SERVO_CHANNEL };
+
+        for (uint8_t i = 0; i < 3; i++) {
             int32_t delta = Ax[i].tgt_ticks - Ax[i].pos_ticks;
-            if (delta >  Ax[i].max_step) delta =  Ax[i].max_step;
-            if (delta < -Ax[i].max_step) delta = -Ax[i].max_step;
+
+            if (delta >  Ax[i].max_step)  delta =  Ax[i].max_step;
+            if (delta < -Ax[i].max_step)  delta = -Ax[i].max_step;
+
             Ax[i].pos_ticks += delta;
 
-            // Convert pos_ticks -> PWM us and write via PWM HAL
-            // (use your PWM_PIC32 helpers)
+            // Clamp into this balloon's calibrated tick range
+            if (Ax[i].pos_ticks < Ax[i].floor_ticks){
+                Ax[i].pos_ticks = Ax[i].floor_ticks;
+            }
+            if (Ax[i].pos_ticks > Ax[i].ceiling_ticks){
+                Ax[i].pos_ticks = Ax[i].ceiling_ticks;
+            }
 
-            // Crash detect
-            if (Ax[i].pos_ticks <= Ax[i].floor_ticks){
-            ES_Event_t crash = { .EventType = ES_OBJECT_CRASHED };
-            PostGameSM(crash);
+            // Directly drive PWM in ticks (world == ticks)
+            PWMOperate_SetPulseWidthOnChannel((uint16_t)Ax[i].pos_ticks, chan[i]);
+
+            // Crash detect at floor - similar to event cheker
+            if ((Ax[i].pos_ticks <= Ax[i].floor_ticks) && (!g_crashed)){
+                g_crashed = true;
+                ES_Event_t crash = { .EventType = ES_OBJECT_CRASHED };
+                PostGameSM(crash);
             }
         }
-        
-        ES_Timer_InitTimer(TID_BALLOON_UPDATE, 300);
+
+        ES_Timer_InitTimer(TID_BALLOON_UPDATE, 300); // new update frame
         return ret;
     }
-// Handling gear dispensing state machine alone
+// Handling gear dispensing
     if (ThisEvent.EventType == ES_TIMEOUT && ThisEvent.EventParam == TID_GEAR_SERVO){
-
+//        if the timer expires, it means the servo is in the dispensing position and so needs to now come back to the resting position
         uint16_t restTicks     = SERVO_US_TO_TICKS(GEAR_SERVO_REST_US);
-        uint16_t dispenseTicks = SERVO_US_TO_TICKS(GEAR_SERVO_DISPENSE_US);
-
-        switch (GearState){
-
-          case GEAR_GOING_TO_DISPENSE:
-            // Move to DISPENSE and schedule return to REST
-            PWMOperate_SetPulseWidthOnChannel(dispenseTicks, GEAR_SERVO_CHANNEL);
-            GearState = GEAR_GOING_TO_REST;
-            ES_Timer_InitTimer(TID_GEAR_SERVO, 300);   // 300ms dwell at DISPENSE
-            break;
-
-          case GEAR_GOING_TO_REST:
-            // Move back to REST and finish
-            PWMOperate_SetPulseWidthOnChannel(restTicks, GEAR_SERVO_CHANNEL);
-            GearState = GEAR_IDLE;
-            break;
-
-          default:
-            GearState = GEAR_IDLE;
-            break;
-        }
-
+        PWMOperate_SetPulseWidthOnChannel(restTicks, GEAR_SERVO_CHANNEL);
         return ret;
     }
 
@@ -222,15 +228,12 @@ ES_Event_t RunMotorCtrl(ES_Event_t ThisEvent)
  public functions
  ***************************************************************************/
 void MC_SetDifficultyPercent(uint8_t pct){
-    // map 0?100% ? max ticks per 20 ms (speed profile)
-    // e.g., Ax[i].max_step = map(pct, 0,100, slow_step, fast_step);
-    // Tunable speed range (ticks per 20 ms frame)
-    // You will later choose pos_ticks units so that these feel reasonable.
+    
     const int32_t MIN_STEP_TICKS = 5;    // very easy / slow motion tunable parameter
     const int32_t MAX_STEP_TICKS = 80;   // very hard / fast motion tunable parameter
 
-    // Map 1?100% linearly into [MIN_STEP_TICKS .. MAX_STEP_TICKS]
-    // Using 99 in the denominator so that pct=1 ? MIN, pct=100 ? MAX exactly.
+    // Map 1->100% linearly into [MIN_STEP_TICKS to MAX_STEP_TICKS]
+    // Using 99 in the denominator so that pct=1 -> MIN, pct=100 -> MAX exactly.
     int32_t step = MIN_STEP_TICKS +
                    ((int32_t)(pct - 1) * (MAX_STEP_TICKS - MIN_STEP_TICKS)) / 99;
 
@@ -241,18 +244,9 @@ void MC_SetDifficultyPercent(uint8_t pct){
 }
 
 void MC_DispenseTwoGearsOnce(void){
-    if (GearState != GEAR_IDLE){
-        // already running a sweep; ignore
-        return;
-    }
-
-    uint16_t restTicks = SERVO_US_TO_TICKS(GEAR_SERVO_REST_US);
-
-    // Start from REST
-    PWMOperate_SetPulseWidthOnChannel(restTicks, GEAR_SERVO_CHANNEL);
-
-    // First transition will move to DISPENSE
-    GearState = GEAR_GOING_TO_DISPENSE;
+//    Command the servo to the position for dispensing gears and start a timer
+    uint16_t dispenseTicks = SERVO_US_TO_TICKS(GEAR_SERVO_DISPENSE_US);
+    PWMOperate_SetPulseWidthOnChannel(dispenseTicks, GEAR_SERVO_CHANNEL);
     ES_Timer_InitTimer(TID_GEAR_SERVO, 300);   // 300ms before first move
 }
 
@@ -261,6 +255,19 @@ void MC_CommandRise(uint8_t idx){ Ax[idx-1].tgt_ticks = Ax[idx-1].ceiling_ticks;
 void MC_CommandFall(uint8_t idx){ Ax[idx-1].tgt_ticks = Ax[idx-1].floor_ticks;}
 
 void MC_RaiseAllToTop(void){ for(uint8_t i=1;i<=3;i++) MC_CommandRise(i);}
+
+void MC_DebugPrintAxes(void){
+    printf("B1 pos=%ld tgt=%ld floor=%ld ceil=%ld\r\n",
+           Ax[0].pos_ticks, Ax[0].tgt_ticks,
+           Ax[0].floor_ticks, Ax[0].ceiling_ticks);
+    printf("B2 pos=%ld tgt=%ld floor=%ld ceil=%ld\r\n",
+           Ax[1].pos_ticks, Ax[1].tgt_ticks,
+           Ax[1].floor_ticks, Ax[1].ceiling_ticks);
+    printf("B3 pos=%ld tgt=%ld floor=%ld ceil=%ld\r\n",
+           Ax[2].pos_ticks, Ax[2].tgt_ticks,
+           Ax[2].floor_ticks, Ax[2].ceiling_ticks);
+}
+
 /***************************************************************************
  private functions
  ***************************************************************************/

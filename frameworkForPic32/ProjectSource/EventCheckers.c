@@ -44,7 +44,8 @@
 
 #include <inttypes.h>
 static uint16_t Baselines[3] = {0,0,0}; // { AN12, AN5, AN4 }
- 
+static bool g_HW_InitDone = false;
+
 /*---------------------------- Module Variables ---------------------------*/
 // with the introduction of Gen2, we need a module level Priority variable
 /*----------------------------- Module Defines ----------------------------*/
@@ -57,10 +58,10 @@ static uint16_t Baselines[3] = {0,0,0}; // { AN12, AN5, AN4 }
 /* prototypes for public functions for this service.They should be functions
    relevant to the behavior of this service
 */
+void Targets_SetBaselines(uint16_t b12, uint16_t b5, uint16_t b4);
 /***************************************************************************
  EventChecker functions
  ***************************************************************************/
-void Targets_SetBaselines(uint16_t b12, uint16_t b5, uint16_t b4);
 
   
 
@@ -86,6 +87,7 @@ void Targets_SetBaselines(uint16_t b12, uint16_t b5, uint16_t b4);
 ****************************************************************************/
 bool Check4Keystroke(void)
 {
+//    printf("keystroke event checker");
     if (IsNewKeyReady())   // new key waiting?
     {
       ES_Event_t ThisEvent;
@@ -101,11 +103,13 @@ bool Check4Keystroke(void)
 bool Check4HandWave(void){
     static uint8_t last = 1;                  // idle high (beam unbroken)
     uint8_t cur = BEAM_BREAK_PORT;            // direct register read
+//    printf("beam break event checker\n");
 
     if ((cur != last) && (cur == 0)){         // falling edge = beam broken
         ES_Event_t e = { .EventType = ES_HAND_WAVE_DETECTED };
         PostGameSM(e);
         last = cur;
+        
         return true;
     }
     last = cur;
@@ -113,104 +117,117 @@ bool Check4HandWave(void){
 }
  
 bool Check4Difficulty(void){
-//    With the values configured in ADC_ConfigAutoScan, the ADC_MultiRead() array indices are :
-//            idx_AN4 = 0
-//            idx_AN5 = 1
-//            idx_AN11 = 2
-//            idx_AN12 = 3
     
-    static uint8_t lastPct = 255; // set a random value initially  
-    uint32_t adc[8];                         
-    ADC_MultiRead(adc);                      // reads 8 channels and stores the values
-
-    const uint16_t raw = (uint16_t)adc[2];   // AN11
-    // map 10-bit raw (0..1023) to 0..100% with a tiny low-pass (optional)
-    uint8_t pct = (uint8_t)((raw * 100u + 511u) / 1023u); // with rounding math
+//    if(!g_HW_InitDone) return false; // dont check for difficulty unless hardware is initialized
+////    With the values configured in ADC_ConfigAutoScan, the ADC_MultiRead() array indices are :
+////            idx_AN4 = 0
+////            idx_AN5 = 1
+////            idx_AN11 = 2
+////            idx_AN12 = 3
+//    
+//    static uint8_t lastRaw = 0xFFFF; // set a random value initially  
+//    uint32_t adc[8];                         
+//    ADC_MultiRead(adc);                      // reads 8 channels and stores the values
+//
+//    const uint16_t raw = (uint16_t)adc[2];   // AN11
+//    
+//    
+//    
+//    // 5% deadband
+////    
+//    if (lastRaw == 0xFFFF || raw > (lastRaw+100) || (raw < (lastRaw-100))){
+//        // map 10-bit raw (0..1023) to 0..100%
+//        uint8_t pct = (uint16_t)((raw * 100u) / 1023u); // with rounding math
+//        printf("%1u %\n",pct);
+////  Post a change in difficulty only if the difficulty changes by more than 2%
+//        ES_Event_t e = { .EventType = ES_DIFFICULTY_CHANGED, .EventParam = pct };
+//        
+//        PostGameSM(e);
+//        
+//        lastRaw = raw;
+//        
+//        return true;
+//    }
     
-    // 2% deadband
-    if (lastPct == 255 || pct > (lastPct+2) || (pct < (lastPct-2))){
-//  Post a change in difficulty only if the difficulty changes by more than 2%
-        ES_Event_t e = { .EventType = ES_DIFFICULTY_CHANGED, .EventParam = pct };
-        PostGameSM(e);                         
-        lastPct = pct;
-        return true;
-    }
     return false;
 }
 
 
 
 bool Check4LaserHits(void){
-    
-    //Balloon mapping:
-    //
-    //B1 ? AN12
-    //B2 ? AN5
-    //B3 ? AN4
-    
-    static uint8_t isHit[3] = {0,0,0};   // 0 = currently ?no hit? plateau, 1 = ?hit? plateau
-
-    uint32_t adc[8];
-    ADC_MultiRead(adc);
-
-    // channel order from scan set: [0]=AN4, [1]=AN5, [2]=AN11, [3]=AN12
-    const uint16_t an12 = (uint16_t)adc[3];   // B1
-    const uint16_t an5  = (uint16_t)adc[1];   // B2
-    const uint16_t an4  = (uint16_t)adc[0];   // B3
-
-    const uint16_t v[3] = { an12, an5, an4 };
-
-    // margins relative to baseline
-    // when signal climbs above (baseline + HIT_DELTA) from below ? rising edge
-    // when signal falls below (baseline + RELEASE_DELTA) from above ? falling edge
-    const uint16_t HIT_DELTA     = 80;   // ?clearly above baseline? (tuneable parameters)
-    const uint16_t RELEASE_DELTA = 20;   // ?back near baseline? (tuneable parameters)
-
-    bool any = false;
-
-    for (int i = 0; i < 3; i++) {
-
-        // --- Rising edge: NO HIT plateau ? HIT plateau ---
-        if (isHit[i] == 0) {
-            // we are currently in "no hit" state, look for jump above baseline
-            if (v[i] > (uint16_t)(Baselines[i] + HIT_DELTA)) {
-                isHit[i] = 1;  // now in HIT plateau
-
-                ES_Event_t e;
-                e.EventType = (DIRECT_HIT_B1 + i);   // B1/B2/B3
-                e.EventParam = 0;
-                PostGameSM(e);
-
-                any = true;
-            }
-        }
-
-        // --- Falling edge: HIT plateau ? NO HIT plateau ---
-        else { // isHit[i] == 1
-            // we are currently in "hit" state, look for drop back near baseline
-            if (v[i] < (uint16_t)(Baselines[i] + RELEASE_DELTA)) {
-                isHit[i] = 0;  // now in NO HIT plateau
-
-                ES_Event_t e;
-                e.EventType = (NO_HIT_B1 + i);       // B1/B2/B3
-                e.EventParam = 0;
-                PostGameSM(e);
-
-                any = true;
-            }
-        }
-    }
-
-    return any;
+    return false;
+//    //Balloon mapping:
+//    //
+//    //B1 ? AN12
+//    //B2 ? AN5
+//    //B3 ? AN4
+//    
+//    static uint8_t isHit[3] = {0,0,0};   // 0 = currently ?no hit? plateau, 1 = ?hit? plateau
+//
+//    uint32_t adc[8];
+//    ADC_MultiRead(adc);
+//
+//    // channel order from scan set: [0]=AN4, [1]=AN5, [2]=AN11, [3]=AN12
+//    const uint16_t an12 = (uint16_t)adc[3];   // B1
+//    const uint16_t an5  = (uint16_t)adc[1];   // B2
+//    const uint16_t an4  = (uint16_t)adc[0];   // B3
+//
+//    const uint16_t v[3] = { an12, an5, an4 };
+//
+//    // margins relative to baseline
+//    // when signal climbs above (baseline + HIT_DELTA) from below ? rising edge
+//    // when signal falls below (baseline + RELEASE_DELTA) from above ? falling edge
+//    const uint16_t HIT_DELTA     = 1000;   // ?clearly above baseline? (tuneable parameters)
+//    const uint16_t RELEASE_DELTA = 20;   // ?back near baseline? (tuneable parameters)
+//
+//    bool any = false;
+//
+//    for (int i = 0; i < 3; i++) {
+//
+//        // --- Rising edge: NO HIT plateau ? HIT plateau ---
+//        if (isHit[i] == 0) {
+//            // we are currently in "no hit" state, look for jump above baseline
+//            if (v[i] > (uint16_t)(Baselines[i] + HIT_DELTA)) {
+//                isHit[i] = 1;  // now in HIT plateau
+//
+//                ES_Event_t e;
+//                e.EventType = (DIRECT_HIT_B1 + i);   // B1/B2/B3
+//                e.EventParam = 0;
+//                PostGameSM(e);
+//
+//                any = true;
+//            }
+//        }
+//
+//        // --- Falling edge: HIT plateau ? NO HIT plateau ---
+//        else { // isHit[i] == 1
+//            // we are currently in "hit" state, look for drop back near baseline
+//            if (v[i] < (uint16_t)(Baselines[i] + RELEASE_DELTA)) {
+//                isHit[i] = 0;  // now in NO HIT plateau
+//
+//                ES_Event_t e;
+//                e.EventType = (NO_HIT_B1 + i);       // B1/B2/B3
+//                e.EventParam = 0;
+//                PostGameSM(e);
+//
+//                any = true;
+//            }
+//        }
+//    }
+//
+//    return any;
 }
 
 /***************************************************************************
  public functions
  ***************************************************************************/
 void Targets_SetBaselines(uint16_t b12, uint16_t b5, uint16_t b4){
-  Baselines[0] = b12;  // B1 ? AN12
-  Baselines[1] = b5;   // B2 ? AN5
-  Baselines[2] = b4;   // B3 ? AN4
+  
+//printf("Setting Baseline values of AN12(B1)=%lu AN5(B2)=%lu AN4(B3)=%lu\r\n",
+//                                   b12, b5, b4);
+    Baselines[0] = b12;  // B1 ? AN12
+    Baselines[1] = b5;   // B2 ? AN5
+    Baselines[2] = b4;   // B3 ? AN4
 }
 
 

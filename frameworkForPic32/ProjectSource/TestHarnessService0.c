@@ -192,15 +192,15 @@ ES_Event_t RunTestHarnessService0(ES_Event_t ThisEvent)
     case ES_INIT:
     {
       ES_Timer_InitTimer(SERVICE0_TIMER, HALF_SEC);
-      puts("Service 00:");
-      DB_printf("\rES_INIT received in Service %d\r\n", MyPriority);
+//      puts("Service 00:");
+//      DB_printf("\rES_INIT received in Service %d\r\n", MyPriority);
     }
     break;
     case ES_TIMEOUT:   // re-start timer & announce
     {
       ES_Timer_InitTimer(SERVICE0_TIMER, FIVE_SEC);
-      DB_printf("ES_TIMEOUT received from Timer %d in Service %d\r\n",
-          ThisEvent.EventParam, MyPriority);
+//      DB_printf("ES_TIMEOUT received from Timer %d in Service %d\r\n",
+//          ThisEvent.EventParam, MyPriority);
     }
     break;
     case ES_SHORT_TIMEOUT:   // lower the line & announce

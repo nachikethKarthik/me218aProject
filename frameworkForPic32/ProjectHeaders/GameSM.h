@@ -38,10 +38,10 @@
 
 // typedefs for the states
 // State definitions for use with the query function
-typedef enum
-{
-  GS_InitPState, GS_Welcome, GS_WaitingForHandWave, GS_Gameplay,
-  GS_CompletingMode, GS_LosingMode, GS_NoUserInput
+typedef enum{
+    GS_InitPState, GS_Welcome, GS_WaitingForHandWave, GS_Gameplay,
+    GS_CompletingMode, GS_LosingMode, GS_NoUserInput, 
+    GS_TestMode // used only for testing
 }GameState_t;
 
 // Public Function Prototypes

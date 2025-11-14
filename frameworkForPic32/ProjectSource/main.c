@@ -18,6 +18,7 @@
 
 void main(void)
 {
+  
   ES_Return_t ErrorType = Success;
 
   _HW_PIC32Init(); // basic PIC hardware init

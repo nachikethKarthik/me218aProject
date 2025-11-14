@@ -300,7 +300,7 @@ typedef enum
 /****************************************************************************/
 // This is the list of event checking functions
 #define EVENT_CHECK_LIST Check4Keystroke
-
+//, Check4HandWave, Check4Difficulty, Check4LaserHits
 /****************************************************************************/
 // These are the definitions for the post functions to be executed when the
 // corresponding timer expires. All 16 must be defined. If you are not using
@@ -312,9 +312,9 @@ typedef enum
 #define TIMER1_RESP_FUNC PostGameSM   // 20s inactivity
 #define TIMER2_RESP_FUNC PostGameSM   // 1s tick
 #define TIMER3_RESP_FUNC PostGameSM   // 3s mode end
-#define TIMER4_RESP_FUNC PostMotorCtrl // 20 ms motion
-#define TIMER5_RESP_FUNC PostGameSM
-#define TIMER6_RESP_FUNC TIMER_UNUSED
+#define TIMER4_RESP_FUNC PostMotorCtrl // 500 ms motion
+#define TIMER5_RESP_FUNC PostMotorCtrl // 300 ms for gear dispensing
+#define TIMER6_RESP_FUNC TIMER_UNUSED 
 #define TIMER7_RESP_FUNC TIMER_UNUSED
 #define TIMER8_RESP_FUNC TIMER_UNUSED
 #define TIMER9_RESP_FUNC TIMER_UNUSED
