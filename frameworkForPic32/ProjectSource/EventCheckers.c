@@ -118,36 +118,35 @@ bool Check4HandWave(void){
  
 bool Check4Difficulty(void){
     
-//    if(!g_HW_InitDone) return false; // dont check for difficulty unless hardware is initialized
-////    With the values configured in ADC_ConfigAutoScan, the ADC_MultiRead() array indices are :
-////            idx_AN4 = 0
-////            idx_AN5 = 1
-////            idx_AN11 = 2
-////            idx_AN12 = 3
-//    
-//    static uint8_t lastRaw = 0xFFFF; // set a random value initially  
-//    uint32_t adc[8];                         
-//    ADC_MultiRead(adc);                      // reads 8 channels and stores the values
-//
-//    const uint16_t raw = (uint16_t)adc[2];   // AN11
-//    
-//    
-//    
-//    // 5% deadband
-////    
-//    if (lastRaw == 0xFFFF || raw > (lastRaw+100) || (raw < (lastRaw-100))){
-//        // map 10-bit raw (0..1023) to 0..100%
-//        uint8_t pct = (uint16_t)((raw * 100u) / 1023u); // with rounding math
-//        printf("%1u %\n",pct);
-////  Post a change in difficulty only if the difficulty changes by more than 2%
-//        ES_Event_t e = { .EventType = ES_DIFFICULTY_CHANGED, .EventParam = pct };
-//        
-//        PostGameSM(e);
-//        
-//        lastRaw = raw;
-//        
-//        return true;
-//    }
+//    With the values configured in ADC_ConfigAutoScan, the ADC_MultiRead() array indices are :
+//            idx_AN4 = 0
+//            idx_AN5 = 1
+//            idx_AN11 = 2
+//            idx_AN12 = 3
+    
+    static uint16_t lastRaw = 0xFFFF; // set a random value initially  
+    uint32_t adc[8];                         
+    ADC_MultiRead(adc);                      // reads 8 channels and stores the values
+
+    const uint16_t raw = (uint16_t)adc[2];   // AN11
+    
+    
+    
+    // 5% deadband
+//    > (lastRaw+100) || (raw < (lastRaw-100))
+    if (lastRaw == 0xFFFF || abs(lastRaw-raw) >=100 ){
+        // map 10-bit raw (0..1023) to 0..100%
+        uint8_t pct = (uint16_t)((raw * 100u) / 1023u); // with rounding math
+        printf("%1u %\n",pct);
+//  Post a change in difficulty only if the difficulty changes by more than 2%
+        ES_Event_t e = { .EventType = ES_DIFFICULTY_CHANGED, .EventParam = 0 };
+        
+        PostGameSM(e);
+        
+        lastRaw = raw;
+        
+        return true;
+    }
     
     return false;
 }
