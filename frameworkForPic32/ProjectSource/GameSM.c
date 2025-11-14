@@ -38,7 +38,8 @@
 #include "PWM_PIC32.h"
 
 /*----------------------------- Module Defines ----------------------------*/
-#define START_IN_TEST_MODE // used for debugging and testing modules in the state machine, comment out for final functionality
+
+//#define START_IN_TEST_MODE // used for debugging and testing modules in the state machine, comment out for final functionality
 
 #define GEAR_SERVO_CHANNEL      1u
 #define SERVO_US_TO_TICKS(us)   ((uint16_t)(((us) * 5u) / 2u)) // 0.4 µs per tick
@@ -60,6 +61,7 @@ static void LED_BeginRenderDifficulty(uint8_t pct);
 static void LED_SPI_Init(void); 
 static void LED_ShowWelcome(void);
 static void LED_ShowCountdown(uint8_t seconds_remaining);
+static void LED_ShowLoss(void);
 
 static void DispenseTwoGearsOnce(void);
 /* prototypes for public functions for this machine.They should be functions
@@ -74,7 +76,7 @@ static uint8_t     SecondsLeft;
 
 // g stands for guard, GS stands for Game State, BC stands for Balloon control
 static bool g_LedPushPending = false;
-static bool        g_DisplayInitDone = false;
+static bool g_DisplayInitDone = false;
 static bool g_SPI_InitDone = false;
 
 // with the introduction of Gen2, we need a module level Priority var as well
@@ -101,15 +103,11 @@ static uint8_t MyPriority;
 ****************************************************************************/
 bool InitGameSM(uint8_t Priority)
 {
-    ES_Event_t e = { .EventType = ES_INIT };
-
-    MyPriority = Priority;
     
-    if (!g_SPI_InitDone){
-        LED_SPI_Init();
-        //printf("spi initialized\r\n");
-        g_SPI_InitDone = true;
-    }
+    ES_Event_t e = { .EventType = ES_INIT };
+    
+    LED_SPI_Init();
+    MyPriority = Priority;
     
     GameHW_InitPins();
     
@@ -118,7 +116,9 @@ bool InitGameSM(uint8_t Priority)
     #else
     CurrentState = GS_InitPState;
     #endif
+
     printf("Init function complete\n\r");
+    
     return ES_PostToService(MyPriority, e);   
 }
 
@@ -188,9 +188,11 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
             //
             if (ThisEvent.EventType == ES_INIT)    // only respond to ES_Init
             {
+
+                // Capture baselines for ALS-PT19 sensors once at boot
+                CaptureALS_Baselines_Init();
                 
-                
-                // --- Non-blocking display init sequence ---
+                // --- Blocking Code : Display init sequence ---
                 if (!g_DisplayInitDone) {
                     bool done = DM_TakeInitDisplayStep();   // performs 1 small init step
 
@@ -204,15 +206,10 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                         return ReturnEvent;
                     }
 
-                    // At this point the display is fully initialized.
-                    g_DisplayInitDone = true;
+                        // At this point the display is fully initialized.
+                        g_DisplayInitDone = true;
                 }
-                
-                
-
-                // Capture baselines for ALS-PT19 sensors once at boot
-                CaptureALS_Baselines_Init();
-                
+//                printf("running show welcome\n\r");
                 LED_ShowWelcome();
                 MC_RaiseAllToTop();
                 CurrentState = GS_WaitingForHandWave;
@@ -228,18 +225,19 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                   MC_SetDifficultyPercent(pct);     // update motion speeds
               }break;
 
-//              case ES_HAND_WAVE_DETECTED: // from event checker
-//                  SecondsLeft = 60;
-//                  LED_ShowCountdown(SecondsLeft);
-//                  // Start timers: 60s gameplay, 20s inactivity, 1s tick
-//                  ES_Timer_InitTimer(TID_GAME_60S,     60000);
-//                  ES_Timer_InitTimer(TID_INACTIVITY_20S, 20000);
-//                  ES_Timer_InitTimer(TID_TICK_1S,       1000);
-//                  // Begin falling all balloons
-//                  MC_CommandFall(1); MC_CommandFall(2); MC_CommandFall(3);
-////                  CurrentState = GS_Gameplay;
-//                  CurrentState = GS_TestMode;
-//                  break;
+              case ES_HAND_WAVE_DETECTED: // from event checker
+                  SecondsLeft = 60;
+                  LED_ShowCountdown(SecondsLeft);
+                  // Start timers: 60s gameplay, 20s inactivity, 1s tick
+                  ES_Timer_InitTimer(TID_GAME_60S,     60000);
+                  ES_Timer_InitTimer(TID_INACTIVITY_20S, 20000);
+                  ES_Timer_InitTimer(TID_TICK_1S,       1000);
+                  // Begin falling all balloons
+                  MC_CommandFall(1); 
+//                  MC_CommandFall(2); MC_CommandFall(3);
+                  CurrentState = GS_Gameplay;
+                 
+                  break;
                   
             }break;
             
@@ -251,15 +249,15 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                 // Laser hit logic (laser hit implies RISE; no hit implies FALL)
                 case DIRECT_HIT_B1: {MC_CommandRise(1); ES_Timer_InitTimer(TID_INACTIVITY_20S,20000);} break;
 
-                case DIRECT_HIT_B2: {MC_CommandRise(2); ES_Timer_InitTimer(TID_INACTIVITY_20S,20000);} break;
+//                case DIRECT_HIT_B2: {MC_CommandRise(2); ES_Timer_InitTimer(TID_INACTIVITY_20S,20000);} break;
 
-                case DIRECT_HIT_B3: {MC_CommandRise(3); ES_Timer_InitTimer(TID_INACTIVITY_20S,20000);} break;
+//                case DIRECT_HIT_B3: {MC_CommandRise(3); ES_Timer_InitTimer(TID_INACTIVITY_20S,20000);} break;
 
                 case NO_HIT_B1:{    MC_CommandFall(1);} break;
 
-                case NO_HIT_B2:{    MC_CommandFall(2);} break;
+//                case NO_HIT_B2:{    MC_CommandFall(2);} break;
 
-                case NO_HIT_B3:{    MC_CommandFall(3);} break;
+//                case NO_HIT_B3:{    MC_CommandFall(3);} break;
 
                 case ES_TIMEOUT:
                     
@@ -283,6 +281,7 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                     
                     case ES_OBJECT_CRASHED:
                         CurrentState = GS_LosingMode;
+                        LED_ShowLoss();
                         ES_Timer_InitTimer(TID_MODE_3S,3000);
                         break;
 
@@ -317,7 +316,7 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
         
         case GS_TestMode: {
             // entering calibration mode this stops motor ctrl:
-//            ES_Timer_StopTimer(TID_BALLOON_UPDATE);  // MotorCtrl won?t run updates 
+            ES_Timer_StopTimer(TID_BALLOON_UPDATE);  // MotorCtrl won?t run updates 
             printf("Entering test mode because of event: %lu\r\n", ThisEvent.EventType);
             switch (ThisEvent.EventType) {
                 case ES_NEW_KEY: {
@@ -336,9 +335,9 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                                        BEAM_BREAK_PORT);
                                 break;
                             
-                            case '3':{   // difficulty changed event checker test
+                            case '3':{   // Check4LaserHits event checker test
                                 // read ADCs once and print
-                                GameHW_InitPins();
+                                
                                 
                             }break;
                             
@@ -347,11 +346,11 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                                 printf("testing servo motors\r\n");
                                 // 500-2500 us for the SKU: 2000-0025-0504 super speed servo
                                 // 437-2637 us for the SKU: 31318 HS-318 servo
-                                static uint16_t TestPulseUs    = 2000; // 500-2500 us for the SKU: 2000-0025-0504 super speed
+                                static uint16_t TestPulseUs    = 1500; // 500-2500 us for the SKU: 2000-0025-0504 super speed
                                 uint16_t ticks = SERVO_US_TO_TICKS(TestPulseUs);
                                 
                                 printf("Commanding Channel 3 OC3 pin 10. Motor for B1. Commanding it to pwm microsecond value %lu\r\n", TestPulseUs);
-                                PWMOperate_SetPulseWidthOnChannel(ticks, B1_SERVO_CHANNEL);
+                                PWMOperate_SetPulseWidthOnChannel(ticks, B3_SERVO_CHANNEL);
                                 // similar print state
                                 break;
                             
@@ -501,7 +500,7 @@ static void LED_SPI_Init(void)
   SPISetup_EnableSPI(SPI_SPI1);
 }
 static void LED_BeginRenderDifficulty(uint8_t pct){
-    if (pct < 1) pct = 1; if (pct > 100) pct = 100;
+    if (pct < 0) pct = 1; if (pct > 100) pct = 100;
     char buf[4]; sprintf(buf, "%u", (unsigned)pct); //Convert difficulty into string
 
     DM_ClearDisplayBuffer();                 // clear off-screen buffer
@@ -538,6 +537,30 @@ static void LED_ShowCountdown(uint8_t seconds_remaining){
     g_LedPushPending = true;
 
     // Kick the first non-blocking update step
+    ES_Event_t e = { .EventType = ES_LED_PUSH_STEP };
+    PostGameSM(e);
+}
+
+static void LED_ShowLoss(){
+    // Renders the string "WELCOME" into the off-screen buffer,
+    // then kicks off a non-blocking push using ES_LED_PUSH_STEP.
+
+    const char *msg = "YOU SUCK";   // all caps; font covers ASCII chars
+
+    // Clear the off-screen frame buffer
+    DM_ClearDisplayBuffer();
+
+    // Build the text into the buffer, similar to LED_BeginRenderDifficulty()
+    // Each char: add glyph, then scroll a few columns to make room. 
+    for (const char *p = msg; *p != '\0'; p++){
+            DM_AddChar2DisplayBuffer((unsigned char)(*p));
+            DM_ScrollDisplayBuffer(4);
+    }
+
+    // Mark that a push to the physical display is required
+    g_LedPushPending = true;
+
+    // Kick the first row transfer using the existing ES_LED_PUSH_STEP mechanism
     ES_Event_t e = { .EventType = ES_LED_PUSH_STEP };
     PostGameSM(e);
 }

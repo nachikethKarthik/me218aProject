@@ -109,7 +109,7 @@ bool InitMotorCtrl(uint8_t Priority)
 
     MyPriority = Priority;
    
-    ES_Timer_InitTimer(TID_BALLOON_UPDATE, 500); // Tunable parameter for the update rate of the servos
+    ES_Timer_InitTimer(TID_BALLOON_UPDATE, 200); // Tunable parameter for the update rate of the servos
     
     MotorHW_InitServos();
     
@@ -202,15 +202,15 @@ ES_Event_t RunMotorCtrl(ES_Event_t ThisEvent)
             // Directly drive PWM in ticks (world == ticks)
             PWMOperate_SetPulseWidthOnChannel((uint16_t)Ax[i].pos_ticks, chan[i]);
 
-            // Crash detect at floor - similar to event cheker
-            if ((Ax[i].pos_ticks <= Ax[i].floor_ticks) && (!g_crashed)){
-                g_crashed = true;
+            // Crash detect at floor - similar to event checker // only for B1 for now, change for all three balloons later (Ax[i].pos_ticks <= Ax[i].floor_ticks)
+            if ((Ax[0].pos_ticks <= Ax[0].floor_ticks)&& (!g_crashed)){
+                g_crashed = true; // only check for crash if none have crashed
                 ES_Event_t crash = { .EventType = ES_OBJECT_CRASHED };
                 PostGameSM(crash);
             }
         }
 
-        ES_Timer_InitTimer(TID_BALLOON_UPDATE, 300); // new update frame
+        ES_Timer_InitTimer(TID_BALLOON_UPDATE, 200); // new update frame
         return ret;
     }
 // Handling gear dispensing
@@ -229,8 +229,8 @@ ES_Event_t RunMotorCtrl(ES_Event_t ThisEvent)
  ***************************************************************************/
 void MC_SetDifficultyPercent(uint8_t pct){
     
-    const int32_t MIN_STEP_TICKS = 5;    // very easy / slow motion tunable parameter
-    const int32_t MAX_STEP_TICKS = 80;   // very hard / fast motion tunable parameter
+    const int32_t MIN_STEP_TICKS = 10;    // very easy / slow motion tunable parameter
+    const int32_t MAX_STEP_TICKS = 100;   // very hard / fast motion tunable parameter
 
     // Map 1->100% linearly into [MIN_STEP_TICKS to MAX_STEP_TICKS]
     // Using 99 in the denominator so that pct=1 -> MIN, pct=100 -> MAX exactly.
@@ -247,7 +247,7 @@ void MC_DispenseTwoGearsOnce(void){
 //    Command the servo to the position for dispensing gears and start a timer
     uint16_t dispenseTicks = SERVO_US_TO_TICKS(GEAR_SERVO_DISPENSE_US);
     PWMOperate_SetPulseWidthOnChannel(dispenseTicks, GEAR_SERVO_CHANNEL);
-    ES_Timer_InitTimer(TID_GEAR_SERVO, 300);   // 300ms before first move
+    ES_Timer_InitTimer(TID_GEAR_SERVO, 500);   // 500ms before first move
 }
 
 void MC_CommandRise(uint8_t idx){ Ax[idx-1].tgt_ticks = Ax[idx-1].ceiling_ticks; }

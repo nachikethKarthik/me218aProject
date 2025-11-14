@@ -250,20 +250,20 @@ typedef enum
 {
     ES_NO_EVENT = 0,
     ES_ERROR,                 /* used to indicate an error from the service */
-    ES_INIT,                  /* used to transition from initial pseudo-state */
+    ES_INIT,         // 2         /* used to transition from initial pseudo-state */
     ES_TIMEOUT,               /* signals that the timer has expired */
     ES_SHORT_TIMEOUT,         /* signals that a short timer has expired */
     /* User-defined events start here */
-    ES_NEW_KEY,               /* signals a new key received from terminal */
-    ES_HAND_WAVE_DETECTED,
-    ES_DIFFICULTY_CHANGED,       // param: 0?100 %
-    DIRECT_HIT_B1, 
-    DIRECT_HIT_B2, 
-    DIRECT_HIT_B3,
-    NO_HIT_B1,
-    NO_HIT_B2,    
+    ES_NEW_KEY,              //5  /* signals a new key received from terminal */
+    ES_HAND_WAVE_DETECTED,//6
+    ES_DIFFICULTY_CHANGED, //7      // param: 0?100 %
+    DIRECT_HIT_B1, // 8
+    DIRECT_HIT_B2, // 9
+    DIRECT_HIT_B3, //10
+    NO_HIT_B1,    // 11
+    NO_HIT_B2,    //12
     NO_HIT_B3,
-    ES_OBJECT_CRASHED,
+    ES_OBJECT_CRASHED, //14
     ES_LED_PUSH_STEP
 }ES_EventType_t;
 
@@ -299,8 +299,8 @@ typedef enum
 
 /****************************************************************************/
 // This is the list of event checking functions
-#define EVENT_CHECK_LIST Check4Keystroke,Check4Difficulty
-//, Check4HandWave, Check4Difficulty, Check4LaserHits
+#define EVENT_CHECK_LIST Check4Keystroke,Check4Difficulty, Check4HandWave, Check4LaserHits
+//, Check4HandWave, Check4Difficulty
 /****************************************************************************/
 // These are the definitions for the post functions to be executed when the
 // corresponding timer expires. All 16 must be defined. If you are not using

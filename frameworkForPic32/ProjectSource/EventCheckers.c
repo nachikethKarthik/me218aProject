@@ -117,7 +117,7 @@ bool Check4HandWave(void){
 }
  
 bool Check4Difficulty(void){
-    
+    // BUGFIX TODO: Just display multiples of 10 instead of numbers like 97 67 etc looks nicer
 //    With the values configured in ADC_ConfigAutoScan, the ADC_MultiRead() array indices are :
 //            idx_AN4 = 0
 //            idx_AN5 = 1
@@ -128,23 +128,19 @@ bool Check4Difficulty(void){
     uint32_t adc[8];                         
     ADC_MultiRead(adc);                      // reads 8 channels and stores the values
 
-    const uint16_t raw = (uint16_t)adc[2];   // AN11
+    uint16_t raw = (uint16_t)adc[2];   // AN11
+    uint16_t diff = (raw > lastRaw) ? (raw - lastRaw) : (lastRaw - raw);
     
-    
-    
-    // 5% deadband
-//    > (lastRaw+100) || (raw < (lastRaw-100))
-    if (lastRaw == 0xFFFF || abs(lastRaw-raw) >=100 ){
-        // map 10-bit raw (0..1023) to 0..100%
-        uint8_t pct = (uint16_t)((raw * 100u) / 1023u); // with rounding math
-        printf("%1u %\n",pct);
-//  Post a change in difficulty only if the difficulty changes by more than 2%
-        ES_Event_t e = { .EventType = ES_DIFFICULTY_CHANGED, .EventParam = 0 };
-        
-        PostGameSM(e);
-        
+    if (lastRaw == 0xFFFF) {
         lastRaw = raw;
-        
+        return false;    // no event was posted yet
+    }
+    if (diff >= 31) { // 3% deadband corresponds to approx 31 raw values 
+        uint16_t pct = (uint16_t)((raw * 100u) / 1024u);
+        printf("%1u %\r\n",pct);
+        ES_Event_t e = { .EventType = ES_DIFFICULTY_CHANGED, .EventParam = (pct) };
+        PostGameSM(e);
+        lastRaw = raw;
         return true;
     }
     
@@ -154,67 +150,68 @@ bool Check4Difficulty(void){
 
 
 bool Check4LaserHits(void){
-    return false;
-//    //Balloon mapping:
-//    //
-//    //B1 ? AN12
-//    //B2 ? AN5
-//    //B3 ? AN4
-//    
-//    static uint8_t isHit[3] = {0,0,0};   // 0 = currently ?no hit? plateau, 1 = ?hit? plateau
-//
-//    uint32_t adc[8];
-//    ADC_MultiRead(adc);
-//
-//    // channel order from scan set: [0]=AN4, [1]=AN5, [2]=AN11, [3]=AN12
-//    const uint16_t an12 = (uint16_t)adc[3];   // B1
-//    const uint16_t an5  = (uint16_t)adc[1];   // B2
-//    const uint16_t an4  = (uint16_t)adc[0];   // B3
-//
-//    const uint16_t v[3] = { an12, an5, an4 };
-//
-//    // margins relative to baseline
-//    // when signal climbs above (baseline + HIT_DELTA) from below ? rising edge
-//    // when signal falls below (baseline + RELEASE_DELTA) from above ? falling edge
-//    const uint16_t HIT_DELTA     = 1000;   // ?clearly above baseline? (tuneable parameters)
-//    const uint16_t RELEASE_DELTA = 20;   // ?back near baseline? (tuneable parameters)
-//
-//    bool any = false;
-//
-//    for (int i = 0; i < 3; i++) {
-//
-//        // --- Rising edge: NO HIT plateau ? HIT plateau ---
-//        if (isHit[i] == 0) {
-//            // we are currently in "no hit" state, look for jump above baseline
-//            if (v[i] > (uint16_t)(Baselines[i] + HIT_DELTA)) {
-//                isHit[i] = 1;  // now in HIT plateau
-//
-//                ES_Event_t e;
-//                e.EventType = (DIRECT_HIT_B1 + i);   // B1/B2/B3
-//                e.EventParam = 0;
-//                PostGameSM(e);
-//
-//                any = true;
-//            }
-//        }
-//
-//        // --- Falling edge: HIT plateau ? NO HIT plateau ---
-//        else { // isHit[i] == 1
-//            // we are currently in "hit" state, look for drop back near baseline
-//            if (v[i] < (uint16_t)(Baselines[i] + RELEASE_DELTA)) {
-//                isHit[i] = 0;  // now in NO HIT plateau
-//
-//                ES_Event_t e;
-//                e.EventType = (NO_HIT_B1 + i);       // B1/B2/B3
-//                e.EventParam = 0;
-//                PostGameSM(e);
-//
-//                any = true;
-//            }
-//        }
-//    }
-//
-//    return any;
+    //Balloon mapping:
+    //
+    //B1 -> AN12
+    //B2 -> AN5
+    //B3 -> AN4
+    
+    static uint8_t isHit[3] = {0,0,0};   // 0 = currently ?no hit? plateau, 1 = ?hit? plateau
+
+    uint32_t adc[8];
+    ADC_MultiRead(adc);
+
+    // channel order from scan set: [0]=AN4, [1]=AN5, [2]=AN11, [3]=AN12
+    const uint16_t an12 = (uint16_t)adc[3];   // B1
+    const uint16_t an5  = (uint16_t)adc[1];   // B2
+    const uint16_t an4  = (uint16_t)adc[0];   // B3
+
+    const uint16_t v[3] = { an12, an5, an4 };
+
+    // margins relative to baseline
+    // when signal climbs above (baseline + HIT_DELTA) from below ? rising edge
+    // when signal falls below (baseline + RELEASE_DELTA) from above ? falling edge
+    const uint16_t HIT_DELTA     = 500;   // ?clearly above baseline? (tuneable parameters)
+    const uint16_t RELEASE_DELTA = 300;   // ?back near baseline? (tuneable parameters)
+
+    bool any = false;
+
+    for (int i = 0; i < 3; i++) {
+
+        // --- Rising edge: NO HIT plateau to HIT plateau ---
+        if (isHit[i] == 0) {
+            // we are currently in "no hit" state, look for jump above baseline
+            if (v[i] > (uint16_t)(Baselines[i] + HIT_DELTA)) {
+                isHit[i] = 1;  // now in HIT plateau
+
+                ES_Event_t e;
+                e.EventType = (DIRECT_HIT_B1 + i);   // B1/B2/B3
+//                printf("B_%1u\r\n",DIRECT_HIT_B1 + i);
+                e.EventParam = 0;
+                PostGameSM(e);
+
+                any = true;
+            }
+        }
+
+        // --- Falling edge: HIT plateau to NO HIT plateau ---
+        else { // isHit[i] == 1
+            // we are currently in "hit" state, look for drop back near baseline
+            if (v[i] < (uint16_t)(Baselines[i] + RELEASE_DELTA)) {
+                isHit[i] = 0;  // now in NO HIT plateau
+
+                ES_Event_t e;
+                e.EventType = (NO_HIT_B1 + i);       // B1/B2/B3
+//                printf("B_%1u\r\n",DIRECT_HIT_B1 + i);
+                e.EventParam = 0;
+                PostGameSM(e);
+
+                any = true;
+            }
+        }
+    }
+
+    return any;
 }
 
 /***************************************************************************
