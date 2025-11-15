@@ -14,6 +14,7 @@
  History
  When           Who     What/Why
  -------------- ---     --------
+ 11/14/25   karthi24    completed integration testing
  11/12/25   karthi24    started conversion into final code
  11/11/25   karthi24    continued adding pseudocode for functionality
  11/10/25   karthi24    started conversion into BalloonCtrl.c 
@@ -109,7 +110,7 @@ bool InitMotorCtrl(uint8_t Priority)
 
     MyPriority = Priority;
    
-    ES_Timer_InitTimer(TID_BALLOON_UPDATE, 200); // Tunable parameter for the update rate of the servos
+    ES_Timer_InitTimer(TID_BALLOON_UPDATE, 100); // Tunable parameter for the update rate of the servos
     
     MotorHW_InitServos();
     
@@ -202,15 +203,15 @@ ES_Event_t RunMotorCtrl(ES_Event_t ThisEvent)
             // Directly drive PWM in ticks (world == ticks)
             PWMOperate_SetPulseWidthOnChannel((uint16_t)Ax[i].pos_ticks, chan[i]);
 
-            // Crash detect at floor - similar to event checker // only for B1 for now, change for all three balloons later (Ax[i].pos_ticks <= Ax[i].floor_ticks)
-            if ((Ax[0].pos_ticks <= Ax[0].floor_ticks)&& (!g_crashed)){
+            // Crash detect at floor - similar to event checker // only for B1 for now, change for all three balloons later 
+            if ((Ax[i].pos_ticks <= Ax[i].floor_ticks) && (!g_crashed)){
                 g_crashed = true; // only check for crash if none have crashed
                 ES_Event_t crash = { .EventType = ES_OBJECT_CRASHED };
                 PostGameSM(crash);
             }
         }
 
-        ES_Timer_InitTimer(TID_BALLOON_UPDATE, 200); // new update frame
+        ES_Timer_InitTimer(TID_BALLOON_UPDATE, 100); // new update frame
         return ret;
     }
 // Handling gear dispensing
@@ -254,7 +255,7 @@ void MC_CommandRise(uint8_t idx){ Ax[idx-1].tgt_ticks = Ax[idx-1].ceiling_ticks;
 
 void MC_CommandFall(uint8_t idx){ Ax[idx-1].tgt_ticks = Ax[idx-1].floor_ticks;}
 
-void MC_RaiseAllToTop(void){ for(uint8_t i=1;i<=3;i++) MC_CommandRise(i);}
+void MC_RaiseAllToTop(void){ for(uint8_t i=1;i<=3;i++) MC_CommandRise(i); g_crashed = false;}
 
 void MC_DebugPrintAxes(void){
     printf("B1 pos=%ld tgt=%ld floor=%ld ceil=%ld\r\n",

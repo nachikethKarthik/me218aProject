@@ -16,6 +16,7 @@
  History
  When           Who     What/Why
  -------------- ---     --------
+ 11/14/25       karthi24     completed integration testing and minor bug fixes
  11/12/25       karthi24     adding code/pseudocode for the final event checker
  11/11/25       karthi24     started adding event checker pseudocode
  08/06/13 13:36 jec     initial version
@@ -43,8 +44,9 @@
 #include "EventCheckers.h"
 
 #include <inttypes.h>
-static uint16_t Baselines[3] = {0,0,0}; // { AN12, AN5, AN4 }
-static bool g_HW_InitDone = false;
+
+// Baselines: index 0=B1(AN12), 1=B2(AN5), 2=B3(AN4)
+static uint16_t Baselines[3] = {0,0,0}; 
 
 /*---------------------------- Module Variables ---------------------------*/
 // with the introduction of Gen2, we need a module level Priority variable
@@ -58,7 +60,7 @@ static bool g_HW_InitDone = false;
 /* prototypes for public functions for this service.They should be functions
    relevant to the behavior of this service
 */
-void Targets_SetBaselines(uint16_t b12, uint16_t b5, uint16_t b4);
+void Targets_SetBaselines(uint16_t, uint16_t, uint16_t);
 /***************************************************************************
  EventChecker functions
  ***************************************************************************/
@@ -87,7 +89,6 @@ void Targets_SetBaselines(uint16_t b12, uint16_t b5, uint16_t b4);
 ****************************************************************************/
 bool Check4Keystroke(void)
 {
-//    printf("keystroke event checker");
     if (IsNewKeyReady())   // new key waiting?
     {
       ES_Event_t ThisEvent;
@@ -101,8 +102,8 @@ bool Check4Keystroke(void)
 
 
 bool Check4HandWave(void){
-    static uint8_t last = 1;                  // idle high (beam unbroken)
-    uint8_t cur = BEAM_BREAK_PORT;            // direct register read
+    static uint8_t last = 1; // idle high (beam unbroken)
+    uint8_t cur = BEAM_BREAK_PORT; // direct register read
 //    printf("beam break event checker\n");
 
     if ((cur != last) && (cur == 0)){         // falling edge = beam broken
@@ -117,7 +118,7 @@ bool Check4HandWave(void){
 }
  
 bool Check4Difficulty(void){
-    // BUGFIX TODO: Just display multiples of 10 instead of numbers like 97 67 etc looks nicer
+    
 //    With the values configured in ADC_ConfigAutoScan, the ADC_MultiRead() array indices are :
 //            idx_AN4 = 0
 //            idx_AN5 = 1
@@ -125,17 +126,21 @@ bool Check4Difficulty(void){
 //            idx_AN12 = 3
     
     static uint16_t lastRaw = 0xFFFF; // set a random value initially  
+    const uint16_t RAW_DEADBAND = 31;  // ?3% of 1024
+    
     uint32_t adc[8];                         
     ADC_MultiRead(adc);                      // reads 8 channels and stores the values
 
     uint16_t raw = (uint16_t)adc[2];   // AN11
-    uint16_t diff = (raw > lastRaw) ? (raw - lastRaw) : (lastRaw - raw);
     
     if (lastRaw == 0xFFFF) {
         lastRaw = raw;
         return false;    // no event was posted yet
     }
-    if (diff >= 31) { // 3% deadband corresponds to approx 31 raw values 
+    
+    uint16_t diff = (raw > lastRaw) ? (raw - lastRaw) : (lastRaw - raw);
+    
+    if (diff >= RAW_DEADBAND) { 
         uint16_t pct = (uint16_t)((raw * 100u) / 1024u);
         printf("%1u %\r\n",pct);
         ES_Event_t e = { .EventType = ES_DIFFICULTY_CHANGED, .EventParam = (pct) };
@@ -150,13 +155,12 @@ bool Check4Difficulty(void){
 
 
 bool Check4LaserHits(void){
-    //Balloon mapping:
-    //
-    //B1 -> AN12
-    //B2 -> AN5
-    //B3 -> AN4
+    // Balloon mapping:
+    //  B1 -> AN12 -> adc[3]
+    //  B2 -> AN5  -> adc[1]
+    //  B3 -> AN4  -> adc[0]
     
-    static uint8_t isHit[3] = {0,0,0};   // 0 = currently ?no hit? plateau, 1 = ?hit? plateau
+    static uint8_t isHit[3] = {0,0,0};   // 0 = no hit, 1 = hit
 
     uint32_t adc[8];
     ADC_MultiRead(adc);
@@ -169,43 +173,36 @@ bool Check4LaserHits(void){
     const uint16_t v[3] = { an12, an5, an4 };
 
     // margins relative to baseline
-    // when signal climbs above (baseline + HIT_DELTA) from below ? rising edge
-    // when signal falls below (baseline + RELEASE_DELTA) from above ? falling edge
-    const uint16_t HIT_DELTA     = 500;   // ?clearly above baseline? (tuneable parameters)
-    const uint16_t RELEASE_DELTA = 300;   // ?back near baseline? (tuneable parameters)
+    // when signal climbs above (baseline + HIT_DELTA) from below meaning a rising edge
+    // when signal falls below (baseline + RELEASE_DELTA) from above meaning a falling edge
+    const uint16_t HIT_DELTA     = 100;   // (tuneable parameters)
+    const uint16_t RELEASE_DELTA = 60;   // (tuneable parameters)
 
     bool any = false;
 
     for (int i = 0; i < 3; i++) {
+        
+        uint16_t hiThresh = (uint16_t)(Baselines[i] + HIT_DELTA);
+        uint16_t loThresh = (uint16_t)(Baselines[i] + RELEASE_DELTA);
 
-        // --- Rising edge: NO HIT plateau to HIT plateau ---
         if (isHit[i] == 0) {
-            // we are currently in "no hit" state, look for jump above baseline
-            if (v[i] > (uint16_t)(Baselines[i] + HIT_DELTA)) {
-                isHit[i] = 1;  // now in HIT plateau
-
+            // rising edge: NO HIT ? HIT
+            if (v[i] > hiThresh) {
+                isHit[i] = 1;
                 ES_Event_t e;
-                e.EventType = (DIRECT_HIT_B1 + i);   // B1/B2/B3
-//                printf("B_%1u\r\n",DIRECT_HIT_B1 + i);
+                e.EventType = (DIRECT_HIT_B1 + i);
                 e.EventParam = 0;
                 PostGameSM(e);
-
                 any = true;
             }
-        }
-
-        // --- Falling edge: HIT plateau to NO HIT plateau ---
-        else { // isHit[i] == 1
-            // we are currently in "hit" state, look for drop back near baseline
-            if (v[i] < (uint16_t)(Baselines[i] + RELEASE_DELTA)) {
-                isHit[i] = 0;  // now in NO HIT plateau
-
+        } else {
+            // falling edge: HIT ? NO HIT
+            if (v[i] < loThresh) {
+                isHit[i] = 0;
                 ES_Event_t e;
-                e.EventType = (NO_HIT_B1 + i);       // B1/B2/B3
-//                printf("B_%1u\r\n",DIRECT_HIT_B1 + i);
+                e.EventType = (NO_HIT_B1 + i);
                 e.EventParam = 0;
                 PostGameSM(e);
-
                 any = true;
             }
         }
@@ -218,12 +215,9 @@ bool Check4LaserHits(void){
  public functions
  ***************************************************************************/
 void Targets_SetBaselines(uint16_t b12, uint16_t b5, uint16_t b4){
-  
-//printf("Setting Baseline values of AN12(B1)=%lu AN5(B2)=%lu AN4(B3)=%lu\r\n",
-//                                   b12, b5, b4);
-    Baselines[0] = b12;  // B1 ? AN12
-    Baselines[1] = b5;   // B2 ? AN5
-    Baselines[2] = b4;   // B3 ? AN4
+    Baselines[0] = b12;  // B1 - AN12
+    Baselines[1] = b5;   // B2 - AN5
+    Baselines[2] = b4;   // B3 - AN4
 }
 
 

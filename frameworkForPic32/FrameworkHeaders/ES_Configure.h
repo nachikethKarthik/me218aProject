@@ -29,11 +29,17 @@
 // The maximum number of services sets an upper bound on the number of
 // services that the framework will handle. Reasonable values are 8 and 16
 // corresponding to an 8-bit(uint8_t) and 16-bit(uint16_t) Ready variable size
+
 #define MAX_NUM_SERVICES 16
 
 /****************************************************************************/
-// This macro determines that nuber of services that are *actually* used in
+// This macro determines that number of services that are *actually* used in
 // a particular application. It will vary in value from 1 to MAX_NUM_SERVICES
+
+// Service 0: TestHarness service
+// Service 0: GameSM
+// Service 1: MotorCtrl
+
 #define NUM_SERVICES 3
 
 /****************************************************************************/
@@ -48,7 +54,7 @@
 // the name of the run function
 #define SERV_0_RUN RunTestHarnessService0
 // How big should this services Queue be?
-#define SERV_0_QUEUE_SIZE 5
+#define SERV_0_QUEUE_SIZE 10
 
 /****************************************************************************/
 // The following sections are used to define the parameters for each of the
@@ -60,7 +66,7 @@
     #define SERV_1_HEADER      "GameSM.h"
     #define SERV_1_INIT        InitGameSM
     #define SERV_1_RUN         RunGameSM
-    #define SERV_1_QUEUE_SIZE  3
+    #define SERV_1_QUEUE_SIZE  10
 #endif
 
 /****************************************************************************/
@@ -70,7 +76,7 @@
     #define SERV_2_HEADER "MotorCtrl.h"
     #define SERV_2_INIT   InitMotorCtrl
     #define SERV_2_RUN    RunMotorCtrl
-    #define SERV_2_QUEUE_SIZE 3
+    #define SERV_2_QUEUE_SIZE 10
 
 #endif
 
@@ -249,23 +255,24 @@
 typedef enum
 {
     ES_NO_EVENT = 0,
-    ES_ERROR,                 /* used to indicate an error from the service */
-    ES_INIT,         // 2         /* used to transition from initial pseudo-state */
-    ES_TIMEOUT,               /* signals that the timer has expired */
-    ES_SHORT_TIMEOUT,         /* signals that a short timer has expired */
-    /* User-defined events start here */
-    ES_NEW_KEY,              //5  /* signals a new key received from terminal */
-    ES_HAND_WAVE_DETECTED,//6
-    ES_DIFFICULTY_CHANGED, //7      // param: 0?100 %
-    DIRECT_HIT_B1, // 8
-    DIRECT_HIT_B2, // 9
-    DIRECT_HIT_B3, //10
-    NO_HIT_B1,    // 11
-    NO_HIT_B2,    //12
-    NO_HIT_B3,
-    ES_OBJECT_CRASHED, //14
-    ES_LED_PUSH_STEP
-}ES_EventType_t;
+    ES_ERROR,                 /* framework error */
+    ES_INIT,                  /* pseudo-state init */
+    ES_TIMEOUT,               /* timer expired */
+    ES_SHORT_TIMEOUT,         /* short timer expired */
+
+    /* User-defined events */
+    ES_NEW_KEY,               // 5  from UART test harness
+    ES_HAND_WAVE_DETECTED,    // 6  beam-break -> start game
+    ES_DIFFICULTY_CHANGED,    // 7  param: 0?100 %
+    DIRECT_HIT_B1,            // 8
+    DIRECT_HIT_B2,            // 9
+    DIRECT_HIT_B3,            // 10
+    NO_HIT_B1,                // 11
+    NO_HIT_B2,                // 12
+    NO_HIT_B3,                // 13
+    ES_OBJECT_CRASHED,        // 14 any balloon hit floor
+    ES_LED_PUSH_STEP          // 15 internal LED row-push
+} ES_EventType_t;
 
 /****************************************************************************/
 // These are the definitions for the Distribution lists. Each definition
@@ -299,8 +306,8 @@ typedef enum
 
 /****************************************************************************/
 // This is the list of event checking functions
-#define EVENT_CHECK_LIST Check4Keystroke,Check4Difficulty, Check4HandWave, Check4LaserHits
-//, Check4HandWave, Check4Difficulty
+#define EVENT_CHECK_LIST Check4LaserHits, Check4HandWave,Check4Difficulty, Check4Keystroke  
+
 /****************************************************************************/
 // These are the definitions for the post functions to be executed when the
 // corresponding timer expires. All 16 must be defined. If you are not using
@@ -312,8 +319,8 @@ typedef enum
 #define TIMER1_RESP_FUNC PostGameSM   // 20s inactivity
 #define TIMER2_RESP_FUNC PostGameSM   // 1s tick
 #define TIMER3_RESP_FUNC PostGameSM   // 3s mode end
-#define TIMER4_RESP_FUNC PostMotorCtrl // 500 ms motion
-#define TIMER5_RESP_FUNC PostMotorCtrl // 300 ms for gear dispensing
+#define TIMER4_RESP_FUNC PostMotorCtrl // balloon update tick
+#define TIMER5_RESP_FUNC PostMotorCtrl // gear servo dwell
 #define TIMER6_RESP_FUNC TIMER_UNUSED 
 #define TIMER7_RESP_FUNC TIMER_UNUSED
 #define TIMER8_RESP_FUNC TIMER_UNUSED
@@ -334,12 +341,12 @@ typedef enum
 
 
 // === Symbolic timer IDs ===
-#define TID_GAME_60S        0
-#define TID_INACTIVITY_20S  1
-#define TID_TICK_1S         2
-#define TID_MODE_3S         3
-#define TID_BALLOON_UPDATE    4 
-#define TID_GEAR_SERVO      5 // used to control the wait time between positions of the gear dispensing servo
+#define TID_GAME_60S        0   // TIMER0
+#define TID_INACTIVITY_20S  1   // TIMER1
+#define TID_TICK_1S         2   // TIMER2
+#define TID_MODE_3S         3   // TIMER3
+#define TID_BALLOON_UPDATE  4   // TIMER4
+#define TID_GEAR_SERVO      5   // TIMER5
 #define SERVICE0_TIMER 15
 
 #endif /* ES_CONFIGURE_H */

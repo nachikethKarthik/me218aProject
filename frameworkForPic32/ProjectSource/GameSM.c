@@ -14,6 +14,7 @@
  History
  When           Who     What/Why
  -------------- ---     --------
+ 11/14/25   karthi24    completed integration testing
  11/13/25   karthi24    began integration testing
  11/12/25   karthi24    started conversion into final code
  11/11/25   karthi24    started adding more states into the pseudocode
@@ -41,14 +42,7 @@
 
 //#define START_IN_TEST_MODE // used for debugging and testing modules in the state machine, comment out for final functionality
 
-#define GEAR_SERVO_CHANNEL      1u
 #define SERVO_US_TO_TICKS(us)   ((uint16_t)(((us) * 5u) / 2u)) // 0.4 µs per tick
-// dwell times for gear dispensing(how long to wait at each position)
-#define GEAR_DWELL_TO_DISPENSE_MS  500u   // rest -> dispense
-#define GEAR_DWELL_TO_REST_MS      500u   // dispense -> rest
-
-#define GEAR_SERVO_REST_US      1500u   // neutral/home
-#define GEAR_SERVO_DISPENSE_US  2100u   // push 2 gears (tune as needed)
 
 /*---------------------------- Module Functions ---------------------------*/
 /* prototypes for private functions for this machine.They should be functions
@@ -59,11 +53,9 @@ static void CaptureALS_Baselines_Init(void);
 
 static void LED_BeginRenderDifficulty(uint8_t pct);
 static void LED_SPI_Init(void); 
-static void LED_ShowWelcome(void);
 static void LED_ShowCountdown(uint8_t seconds_remaining);
-static void LED_ShowLoss(void);
+static void LED_ShowMessage(const char *msg);
 
-static void DispenseTwoGearsOnce(void);
 /* prototypes for public functions for this machine.They should be functions
    relevant to the behavior of this state machine
 */
@@ -210,7 +202,7 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                         g_DisplayInitDone = true;
                 }
 //                printf("running show welcome\n\r");
-                LED_ShowWelcome();
+                LED_ShowMessage("WELCOME");
                 MC_RaiseAllToTop();
                 CurrentState = GS_WaitingForHandWave;
             }
@@ -234,7 +226,8 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                   ES_Timer_InitTimer(TID_TICK_1S,       1000);
                   // Begin falling all balloons
                   MC_CommandFall(1); 
-//                  MC_CommandFall(2); MC_CommandFall(3);
+                  MC_CommandFall(2); 
+                  MC_CommandFall(3);
                   CurrentState = GS_Gameplay;
                  
                   break;
@@ -249,15 +242,15 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                 // Laser hit logic (laser hit implies RISE; no hit implies FALL)
                 case DIRECT_HIT_B1: {MC_CommandRise(1); ES_Timer_InitTimer(TID_INACTIVITY_20S,20000);} break;
 
-//                case DIRECT_HIT_B2: {MC_CommandRise(2); ES_Timer_InitTimer(TID_INACTIVITY_20S,20000);} break;
+                case DIRECT_HIT_B2: {MC_CommandRise(2); ES_Timer_InitTimer(TID_INACTIVITY_20S,20000);} break;
 
-//                case DIRECT_HIT_B3: {MC_CommandRise(3); ES_Timer_InitTimer(TID_INACTIVITY_20S,20000);} break;
+                case DIRECT_HIT_B3: {MC_CommandRise(3); ES_Timer_InitTimer(TID_INACTIVITY_20S,20000);} break;
 
                 case NO_HIT_B1:{    MC_CommandFall(1);} break;
 
-//                case NO_HIT_B2:{    MC_CommandFall(2);} break;
+                case NO_HIT_B2:{    MC_CommandFall(2);} break;
 
-//                case NO_HIT_B3:{    MC_CommandFall(3);} break;
+                case NO_HIT_B3:{    MC_CommandFall(3);} break;
 
                 case ES_TIMEOUT:
                     
@@ -281,7 +274,7 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                     
                     case ES_OBJECT_CRASHED:
                         CurrentState = GS_LosingMode;
-                        LED_ShowLoss();
+                        LED_ShowMessage("LOSS");
                         ES_Timer_InitTimer(TID_MODE_3S,3000);
                         break;
 
@@ -292,7 +285,7 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
         case GS_NoUserInput: {
             if (ThisEvent.EventType == ES_TIMEOUT && ThisEvent.EventParam == TID_MODE_3S){
                 MC_RaiseAllToTop();
-                LED_ShowWelcome();
+                LED_ShowMessage("WELCOME");
                 CurrentState = GS_WaitingForHandWave;
             }
         }break;
@@ -300,7 +293,7 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
         case GS_LosingMode: {
             if (ThisEvent.EventType == ES_TIMEOUT && ThisEvent.EventParam == TID_MODE_3S){
                 MC_RaiseAllToTop();
-                LED_ShowWelcome();
+                LED_ShowMessage("WELCOME");
                 CurrentState = GS_WaitingForHandWave;
             } 
         }break;
@@ -309,7 +302,7 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
             if (ThisEvent.EventType == ES_TIMEOUT && ThisEvent.EventParam == TID_MODE_3S){
                 MC_RaiseAllToTop();
                 MC_DispenseTwoGearsOnce();                      // sweep min to max one time
-                LED_ShowWelcome();
+                LED_ShowMessage("WELCOME");
                 CurrentState = GS_WaitingForHandWave;
             }
         }break;
@@ -406,7 +399,7 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                                 break;
 
                             case 'x':   // leave test mode, run actual game
-                                LED_ShowWelcome();
+                                LED_ShowMessage("WELCOME");
                                 CurrentState = GS_WaitingForHandWave;
                                 printf("Exiting TestMode and restarting motor Ctrl timer ? WaitingForHandWave\r\n");
                                 ES_Timer_StartTimer(TID_BALLOON_UPDATE);  // Restart MotorCtrl timer
@@ -541,50 +534,21 @@ static void LED_ShowCountdown(uint8_t seconds_remaining){
     PostGameSM(e);
 }
 
-static void LED_ShowLoss(){
-    // Renders the string "WELCOME" into the off-screen buffer,
-    // then kicks off a non-blocking push using ES_LED_PUSH_STEP.
-
-    const char *msg = "YOU SUCK";   // all caps; font covers ASCII chars
-
+static void LED_ShowMessage(const char *msg)
+{
     // Clear the off-screen frame buffer
     DM_ClearDisplayBuffer();
 
-    // Build the text into the buffer, similar to LED_BeginRenderDifficulty()
-    // Each char: add glyph, then scroll a few columns to make room. 
-    for (const char *p = msg; *p != '\0'; p++){
-            DM_AddChar2DisplayBuffer((unsigned char)(*p));
-            DM_ScrollDisplayBuffer(4);
+    // Build the text into the buffer
+    for (const char *p = msg; *p != '\0'; p++) {
+        DM_AddChar2DisplayBuffer((unsigned char)(*p));
+        DM_ScrollDisplayBuffer(4);   // spacing between chars
     }
 
     // Mark that a push to the physical display is required
     g_LedPushPending = true;
 
-    // Kick the first row transfer using the existing ES_LED_PUSH_STEP mechanism
-    ES_Event_t e = { .EventType = ES_LED_PUSH_STEP };
-    PostGameSM(e);
-}
-
-static void LED_ShowWelcome(){
-    // Renders the string "WELCOME" into the off-screen buffer,
-    // then kicks off a non-blocking push using ES_LED_PUSH_STEP.
-
-    const char *msg = "WELCOME";   // all caps; font covers ASCII chars
-
-    // Clear the off-screen frame buffer
-    DM_ClearDisplayBuffer();
-
-    // Build the text into the buffer, similar to LED_BeginRenderDifficulty()
-    // Each char: add glyph, then scroll a few columns to make room. 
-    for (const char *p = msg; *p != '\0'; p++){
-            DM_AddChar2DisplayBuffer((unsigned char)(*p));
-            DM_ScrollDisplayBuffer(4);
-    }
-
-    // Mark that a push to the physical display is required
-    g_LedPushPending = true;
-
-    // Kick the first row transfer using the existing ES_LED_PUSH_STEP mechanism
+    // Kick the first row transfer using the ES_LED_PUSH_STEP mechanism
     ES_Event_t e = { .EventType = ES_LED_PUSH_STEP };
     PostGameSM(e);
 }
