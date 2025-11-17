@@ -142,7 +142,6 @@ bool Check4Difficulty(void){
     
     if (diff >= RAW_DEADBAND) { 
         uint16_t pct = (uint16_t)((raw * 100u) / 1024u);
-        printf("%1u %\r\n",pct);
         ES_Event_t e = { .EventType = ES_DIFFICULTY_CHANGED, .EventParam = (pct) };
         PostGameSM(e);
         lastRaw = raw;

@@ -14,6 +14,7 @@
  History
  When           Who     What/Why
  -------------- ---     --------
+ 11/17/25   karthi24    started minor functionality changes, scoring system, LED service, longer messages
  11/14/25   karthi24    completed integration testing
  11/12/25   karthi24    started conversion into final code
  11/11/25   karthi24    continued adding pseudocode for functionality
@@ -38,6 +39,8 @@
 // PBCLK = 20 MHz, /8 = 2.5 MHz -> 0.4 µs per tick
 #define SERVO_US_TO_TICKS(us)   ((uint16_t)(((us) * 5u) / 2u))
 
+// 500-2500 us for the SKU: 2000-0025-0504 super speed servo
+// 437-2637 us for the SKU: 31318 HS-318 servo
 
 // B1 servo position (tunable parameter)
 #define B1_MIN_US      1000u
@@ -63,8 +66,8 @@
 
 
 // Gear servo positions (tunable parameter)
-#define GEAR_SERVO_REST_US      600u
-#define GEAR_SERVO_DISPENSE_US  2000u
+#define GEAR_SERVO_DISPENSE_US      600u
+#define GEAR_SERVO_REST_US  2000u
 
 /*---------------------------- Module Functions ---------------------------*/
 /* prototypes for private functions for this service.They should be functions
@@ -80,11 +83,17 @@ void MC_SetDifficultyPercent(uint8_t pct);
 void MC_CommandRise(uint8_t idx);
 void MC_RaiseAllToTop(void);
 void MC_CommandFall(uint8_t idx);
+uint8_t MC_CountBalloonsAboveMidline(void);
 /*---------------------------- Module Variables ---------------------------*/
 // with the introduction of Gen2, we need a module level Priority variable
 static uint8_t MyPriority;
+
 static Axis_t Ax[3]; // each axis has one balloon
 static bool g_crashed = false;
+
+const uint8_t chan[3] = {   B1_SERVO_CHANNEL,
+                            B2_SERVO_CHANNEL,
+                            B3_SERVO_CHANNEL };
 /*------------------------------ Module Code ------------------------------*/
 /****************************************************************************
  Function
@@ -179,38 +188,38 @@ ES_Event_t RunMotorCtrl(ES_Event_t ThisEvent)
     /********************************************
      in here you write your service code
      *******************************************/
-    if(ThisEvent.EventType == ES_TIMEOUT && ThisEvent.EventParam == TID_BALLOON_UPDATE){
+    if((ThisEvent.EventType == ES_TIMEOUT) && (ThisEvent.EventParam == TID_BALLOON_UPDATE)){
         
         // Slew each axis toward target
-        const uint8_t chan[3] = { B1_SERVO_CHANNEL, B2_SERVO_CHANNEL, B3_SERVO_CHANNEL };
+        if(QueryGameSM() == GS_Gameplay){
+            for (uint8_t i = 0; i < 3; i++) {
+                int32_t delta = Ax[i].tgt_ticks - Ax[i].pos_ticks;
 
-        for (uint8_t i = 0; i < 3; i++) {
-            int32_t delta = Ax[i].tgt_ticks - Ax[i].pos_ticks;
+                if (delta >  Ax[i].max_step)  delta =  Ax[i].max_step;
+                if (delta < -Ax[i].max_step)  delta = -Ax[i].max_step;
 
-            if (delta >  Ax[i].max_step)  delta =  Ax[i].max_step;
-            if (delta < -Ax[i].max_step)  delta = -Ax[i].max_step;
+                Ax[i].pos_ticks += delta;
 
-            Ax[i].pos_ticks += delta;
+                // Clamp into this balloon's calibrated tick range
+                if (Ax[i].pos_ticks < Ax[i].floor_ticks){
+                    Ax[i].pos_ticks = Ax[i].floor_ticks;
+                }
+                if (Ax[i].pos_ticks > Ax[i].ceiling_ticks){
+                    Ax[i].pos_ticks = Ax[i].ceiling_ticks;
+                }
 
-            // Clamp into this balloon's calibrated tick range
-            if (Ax[i].pos_ticks < Ax[i].floor_ticks){
-                Ax[i].pos_ticks = Ax[i].floor_ticks;
-            }
-            if (Ax[i].pos_ticks > Ax[i].ceiling_ticks){
-                Ax[i].pos_ticks = Ax[i].ceiling_ticks;
-            }
+                // Directly drive PWM in ticks (world == ticks)
+                PWMOperate_SetPulseWidthOnChannel((uint16_t)Ax[i].pos_ticks, chan[i]);
 
-            // Directly drive PWM in ticks (world == ticks)
-            PWMOperate_SetPulseWidthOnChannel((uint16_t)Ax[i].pos_ticks, chan[i]);
-
-            // Crash detect at floor - similar to event checker // only for B1 for now, change for all three balloons later 
-            if ((Ax[i].pos_ticks <= Ax[i].floor_ticks) && (!g_crashed)){
-                g_crashed = true; // only check for crash if none have crashed
-                ES_Event_t crash = { .EventType = ES_OBJECT_CRASHED };
-                PostGameSM(crash);
+                // Crash detect at floor - similar to event checker // only for B1 for now, change for all three balloons later 
+                if ((Ax[i].pos_ticks <= Ax[i].floor_ticks) && (!g_crashed)){
+                    g_crashed = true; // only check for crash if none have crashed
+                    ES_Event_t crash = { .EventType = ES_OBJECT_CRASHED };
+                    PostGameSM(crash);
+                }
             }
         }
-
+        
         ES_Timer_InitTimer(TID_BALLOON_UPDATE, 100); // new update frame
         return ret;
     }
@@ -231,7 +240,7 @@ ES_Event_t RunMotorCtrl(ES_Event_t ThisEvent)
 void MC_SetDifficultyPercent(uint8_t pct){
     
     const int32_t MIN_STEP_TICKS = 10;    // very easy / slow motion tunable parameter
-    const int32_t MAX_STEP_TICKS = 100;   // very hard / fast motion tunable parameter
+    const int32_t MAX_STEP_TICKS = 50;   // very hard / fast motion tunable parameter
 
     // Map 1->100% linearly into [MIN_STEP_TICKS to MAX_STEP_TICKS]
     // Using 99 in the denominator so that pct=1 -> MIN, pct=100 -> MAX exactly.
@@ -255,7 +264,21 @@ void MC_CommandRise(uint8_t idx){ Ax[idx-1].tgt_ticks = Ax[idx-1].ceiling_ticks;
 
 void MC_CommandFall(uint8_t idx){ Ax[idx-1].tgt_ticks = Ax[idx-1].floor_ticks;}
 
-void MC_RaiseAllToTop(void){ for(uint8_t i=1;i<=3;i++) MC_CommandRise(i); g_crashed = false;}
+void MC_RaiseAllToTop(void){
+    for (uint8_t i = 0; i < 3; i++) {
+        // force internal state to "at top"
+        Ax[i].pos_ticks = Ax[i].ceiling_ticks;
+        Ax[i].tgt_ticks = Ax[i].ceiling_ticks;
+
+        PWMOperate_SetPulseWidthOnChannel(
+            (uint16_t)Ax[i].ceiling_ticks,
+            chan[i]
+        );
+    }
+    
+    // we are no longer in a crashed condition
+    g_crashed = false;
+}
 
 void MC_DebugPrintAxes(void){
     printf("B1 pos=%ld tgt=%ld floor=%ld ceil=%ld\r\n",
@@ -267,6 +290,22 @@ void MC_DebugPrintAxes(void){
     printf("B3 pos=%ld tgt=%ld floor=%ld ceil=%ld\r\n",
            Ax[2].pos_ticks, Ax[2].tgt_ticks,
            Ax[2].floor_ticks, Ax[2].ceiling_ticks);
+}
+
+uint8_t MC_CountBalloonsAboveDangerline(void)
+{
+    uint8_t count = 0;
+
+    for (uint8_t i = 0; i < 3; i++) {
+        int32_t dangerLine = Ax[i].floor_ticks + ((Ax[i].ceiling_ticks - Ax[i].floor_ticks ) / 4); // tunable parameter for danger line in score calculation
+
+        // "Above midline" ? you can change to >= if you prefer
+        if (Ax[i].pos_ticks >= dangerLine) {
+            count++;
+        }
+    }
+
+    return count;
 }
 
 /***************************************************************************

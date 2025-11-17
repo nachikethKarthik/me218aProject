@@ -34,6 +34,7 @@ void MC_CommandFall(uint8_t idx);
 void MC_RaiseAllToTop(void);
 void MC_DispenseTwoGearsOnce(void);
 void MC_DebugPrintAxes(void);
+uint8_t MC_CountBalloonsAboveDangerline(void);
 
 bool InitMotorCtrl(uint8_t Priority);
 bool PostMotorCtrl(ES_Event_t ThisEvent);

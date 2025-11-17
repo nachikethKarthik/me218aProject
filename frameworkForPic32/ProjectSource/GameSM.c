@@ -14,6 +14,7 @@
  History
  When           Who     What/Why
  -------------- ---     --------
+ 11/17/25   karthi24    started minor functionality changes, scoring system, LED service, longer messages
  11/14/25   karthi24    completed integration testing
  11/13/25   karthi24    began integration testing
  11/12/25   karthi24    started conversion into final code
@@ -55,6 +56,7 @@ static void LED_BeginRenderDifficulty(uint8_t pct);
 static void LED_SPI_Init(void); 
 static void LED_ShowCountdown(uint8_t seconds_remaining);
 static void LED_ShowMessage(const char *msg);
+static void LED_ShowScore(uint16_t);
 
 /* prototypes for public functions for this machine.They should be functions
    relevant to the behavior of this state machine
@@ -66,10 +68,12 @@ void SetAllBalloonsToTop(void);
 static GameState_t CurrentState;
 static uint8_t     SecondsLeft;
 
-// g stands for guard, GS stands for Game State, BC stands for Balloon control
+// g stands for global, GS stands for Game State, BC stands for Balloon control
 static bool g_LedPushPending = false;
 static bool g_DisplayInitDone = false;
 static bool g_SPI_InitDone = false;
+
+static uint16_t    g_Score; // running variable for score
 
 // with the introduction of Gen2, we need a module level Priority var as well
 static uint8_t MyPriority;
@@ -156,7 +160,7 @@ bool PostGameSM(ES_Event_t ThisEvent)
 ES_Event_t RunGameSM(ES_Event_t ThisEvent)
 {
     ES_Event_t ReturnEvent = { .EventType = ES_NO_EVENT };
-     printf("Entering RunGameSM because of event: %lu\r\n", ThisEvent.EventType);
+//     printf("Entering RunGameSM because of event: %lu\r\n", ThisEvent.EventType);
     // Global handler: row-by-row LED update: handled regardless of CurrentState
     if (ThisEvent.EventType == ES_LED_PUSH_STEP){
 //        printf("Pushing to LED\r\n");
@@ -218,7 +222,11 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
               }break;
 
               case ES_HAND_WAVE_DETECTED: // from event checker
+                  g_Score     = 0;
+                  
                   SecondsLeft = 60;
+                  
+                  
                   LED_ShowCountdown(SecondsLeft);
                   // Start timers: 60s gameplay, 20s inactivity, 1s tick
                   ES_Timer_InitTimer(TID_GAME_60S,     60000);
@@ -258,11 +266,18 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                         
                         if (SecondsLeft) SecondsLeft--;
                         LED_ShowCountdown(SecondsLeft);
+
+                        uint8_t afloat = MC_CountBalloonsAboveDangerline();
+                        g_Score += afloat;
+
                         ES_Timer_InitTimer(TID_TICK_1S,1000);
                         
                     } else if (ThisEvent.EventParam == TID_GAME_60S){ // Victory - Game over
                         
                       CurrentState = GS_CompletingMode;
+                      
+                      LED_ShowScore(g_Score);
+                      
                       ES_Timer_InitTimer(TID_MODE_3S,3000);
 
                     } else if (ThisEvent.EventParam == TID_INACTIVITY_20S){ // User inactive - Game over
@@ -274,7 +289,9 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                     
                     case ES_OBJECT_CRASHED:
                         CurrentState = GS_LosingMode;
-                        LED_ShowMessage("LOSS");
+                        
+                        LED_ShowScore(g_Score);
+                        
                         ES_Timer_InitTimer(TID_MODE_3S,3000);
                         break;
 
@@ -293,6 +310,7 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
         case GS_LosingMode: {
             if (ThisEvent.EventType == ES_TIMEOUT && ThisEvent.EventParam == TID_MODE_3S){
                 MC_RaiseAllToTop();
+                MC_DispenseTwoGearsOnce();
                 LED_ShowMessage("WELCOME");
                 CurrentState = GS_WaitingForHandWave;
             } 
@@ -506,6 +524,32 @@ static void LED_BeginRenderDifficulty(uint8_t pct){
     g_LedPushPending = true;                 // mark that rows must be sent
     // kick the first row push by posting a local event to ourselves
     ES_Event_t e = { .EventType = ES_LED_PUSH_STEP};
+    PostGameSM(e);
+}
+
+static void LED_ShowScore(uint16_t score)
+{
+    char numBuf[6];  // enough for scores up to 65535
+    sprintf(numBuf, "%u", (unsigned)score);
+
+    DM_ClearDisplayBuffer();
+
+    // 1) Add prefix "SCORE: "
+    const char *prefix = "SC:";
+    for (const char *p = prefix; *p != '\0'; p++) {
+        DM_AddChar2DisplayBuffer((unsigned char)(*p));
+        DM_ScrollDisplayBuffer(4);   // spacing between chars
+    }
+
+    // 2) Add the numeric part
+    for (char *p = numBuf; *p != '\0'; p++) {
+        DM_AddChar2DisplayBuffer((unsigned char)(*p));
+        DM_ScrollDisplayBuffer(4);
+    }
+
+    // 3) Kick off non-blocking push to the physical display
+    g_LedPushPending = true;
+    ES_Event_t e = { .EventType = ES_LED_PUSH_STEP };
     PostGameSM(e);
 }
 
