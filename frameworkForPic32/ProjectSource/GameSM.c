@@ -38,6 +38,7 @@
 #include "PIC32_AD_Lib.h"
 #include "PIC32_SPI_HAL.h"
 #include "PWM_PIC32.h"
+#include "LEDService.h"
 
 /*----------------------------- Module Defines ----------------------------*/
 
@@ -52,16 +53,11 @@
 static void GameHW_InitPins(void);
 static void CaptureALS_Baselines_Init(void);
 
-static void LED_BeginRenderDifficulty(uint8_t pct);
-static void LED_SPI_Init(void); 
-static void LED_ShowCountdown(uint8_t seconds_remaining);
-static void LED_ShowMessage(const char *msg);
-static void LED_ShowScore(uint16_t);
+#include "LEDService.h"
 
 /* prototypes for public functions for this machine.They should be functions
    relevant to the behavior of this state machine
 */
-void SetAllBalloonsToTop(void);
 /*---------------------------- Module Variables ---------------------------*/
 // everybody needs a state variable, you may need others as well.
 // type of state variable should match that of enum in header file
@@ -102,7 +98,6 @@ bool InitGameSM(uint8_t Priority)
     
     ES_Event_t e = { .EventType = ES_INIT };
     
-    LED_SPI_Init();
     MyPriority = Priority;
     
     GameHW_InitPins();
@@ -112,8 +107,6 @@ bool InitGameSM(uint8_t Priority)
     #else
     CurrentState = GS_InitPState;
     #endif
-
-    printf("Init function complete\n\r");
     
     return ES_PostToService(MyPriority, e);   
 }
@@ -188,26 +181,15 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                 // Capture baselines for ALS-PT19 sensors once at boot
                 CaptureALS_Baselines_Init();
                 
-                // --- Blocking Code : Display init sequence ---
-                if (!g_DisplayInitDone) {
-                    bool done = DM_TakeInitDisplayStep();   // performs 1 small init step
-
-                    if (!done) {
-                        // Not finished yet: re-post ES_INIT to ourselves so that
-                        // the next step happens on the next framework dispatch.
-                        ES_Event_t again = { .EventType = ES_INIT };
-                        PostGameSM(again);
-
-                        // Stay in GS_InitPState and DO NOT fall through to the rest yet.
-                        return ReturnEvent;
-                    }
-
-                        // At this point the display is fully initialized.
-                        g_DisplayInitDone = true;
-                }
-//                printf("running show welcome\n\r");
-                LED_ShowMessage("WELCOME");
+                // Display welcome message
+                ES_Event_t ledEvt = {
+                                        .EventType = ES_LED_SHOW_MESSAGE,
+                                        .EventParam = (uint16_t)LED_MSG_WELCOME
+                                    };
+                PostLEDService(ledEvt);
+                
                 MC_RaiseAllToTop();
+                
                 CurrentState = GS_WaitingForHandWave;
             }
         }break;
@@ -215,30 +197,45 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
         case GS_WaitingForHandWave: {
             switch(ThisEvent.EventType){
 
-              case ES_DIFFICULTY_CHANGED:{
-                  uint8_t pct = ThisEvent.EventParam;
-                  LED_BeginRenderDifficulty(pct);    // render number on the matrix
-                  MC_SetDifficultyPercent(pct);     // update motion speeds
-              }break;
+                case ES_DIFFICULTY_CHANGED:{
+                      uint8_t pct = ThisEvent.EventParam;
 
-              case ES_HAND_WAVE_DETECTED: // from event checker
-                  g_Score     = 0;
-                  
-                  SecondsLeft = 60;
-                  
-                  
-                  LED_ShowCountdown(SecondsLeft);
-                  // Start timers: 60s gameplay, 20s inactivity, 1s tick
-                  ES_Timer_InitTimer(TID_GAME_60S,     60000);
-                  ES_Timer_InitTimer(TID_INACTIVITY_20S, 20000);
-                  ES_Timer_InitTimer(TID_TICK_1S,       1000);
-                  // Begin falling all balloons
-                  MC_CommandFall(1); 
-                  MC_CommandFall(2); 
-                  MC_CommandFall(3);
-                  CurrentState = GS_Gameplay;
-                 
-                  break;
+                      ES_Event_t ledEvt = {
+                          .EventType = ES_LED_SHOW_DIFFICULTY,
+                          .EventParam = pct
+                      };
+
+                      PostLEDService(ledEvt);
+
+                      MC_SetDifficultyPercent(pct);     // update motion speeds
+                }break;
+
+                case ES_HAND_WAVE_DETECTED:{// from event checker
+                    g_Score     = 0;
+
+                    SecondsLeft = 60;
+
+                    ES_Event_t ledEvt = {
+                        .EventType = ES_LED_SHOW_COUNTDOWN,
+                        .EventParam = SecondsLeft
+                    };
+                    
+                    PostLEDService(ledEvt);
+
+                    // Start timers: 60s gameplay, 20s inactivity, 1s tick
+                    ES_Timer_InitTimer(TID_GAME_60S,     60000);
+                    ES_Timer_InitTimer(TID_INACTIVITY_20S, 20000);
+                    ES_Timer_InitTimer(TID_TICK_1S,       1000);
+                    // Begin falling all balloons
+                    MC_CommandFall(1); 
+                    MC_CommandFall(2); 
+                    MC_CommandFall(3);
+                    CurrentState = GS_Gameplay;
+
+                      
+                    
+                }break; 
+                      
                   
             }break;
             
@@ -265,7 +262,13 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                     if (ThisEvent.EventParam == TID_TICK_1S){            // 1 Hz display update
                         
                         if (SecondsLeft) SecondsLeft--;
-                        LED_ShowCountdown(SecondsLeft);
+
+                        ES_Event_t ledEvt = {
+                            .EventType = ES_LED_SHOW_COUNTDOWN,
+                            .EventParam = SecondsLeft
+                        };
+
+                        PostLEDService(ledEvt);
 
                         uint8_t afloat = MC_CountBalloonsAboveDangerline();
                         g_Score += afloat;
@@ -274,11 +277,15 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                         
                     } else if (ThisEvent.EventParam == TID_GAME_60S){ // Victory - Game over
                         
-                      CurrentState = GS_CompletingMode;
-                      
-                      LED_ShowScore(g_Score);
-                      
-                      ES_Timer_InitTimer(TID_MODE_3S,3000);
+                        CurrentState = GS_CompletingMode;
+                        
+                        ES_Event_t ledEvt = {
+                            .EventType = ES_LED_SHOW_SCORE,
+                            .EventParam = g_Score
+                        };
+                        PostLEDService(ledEvt);
+
+                        ES_Timer_InitTimer(TID_MODE_3S,3000);
 
                     } else if (ThisEvent.EventParam == TID_INACTIVITY_20S){ // User inactive - Game over
 
@@ -290,7 +297,11 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                     case ES_OBJECT_CRASHED:
                         CurrentState = GS_LosingMode;
                         
-                        LED_ShowScore(g_Score);
+                        ES_Event_t ledEvt = {
+                            .EventType = ES_LED_SHOW_SCORE,
+                            .EventParam = g_Score
+                        };
+                        PostLEDService(ledEvt);
                         
                         ES_Timer_InitTimer(TID_MODE_3S,3000);
                         break;
@@ -302,7 +313,11 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
         case GS_NoUserInput: {
             if (ThisEvent.EventType == ES_TIMEOUT && ThisEvent.EventParam == TID_MODE_3S){
                 MC_RaiseAllToTop();
-                LED_ShowMessage("WELCOME");
+                ES_Event_t ledEvt = {
+                                        .EventType = ES_LED_SHOW_MESSAGE,
+                                        .EventParam = (uint16_t)LED_MSG_WELCOME
+                                    };
+                PostLEDService(ledEvt);
                 CurrentState = GS_WaitingForHandWave;
             }
         }break;
@@ -311,7 +326,11 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
             if (ThisEvent.EventType == ES_TIMEOUT && ThisEvent.EventParam == TID_MODE_3S){
                 MC_RaiseAllToTop();
                 MC_DispenseTwoGearsOnce();
-                LED_ShowMessage("WELCOME");
+                ES_Event_t ledEvt = {
+                                        .EventType = ES_LED_SHOW_MESSAGE,
+                                        .EventParam = (uint16_t)LED_MSG_WELCOME
+                                    };
+                PostLEDService(ledEvt);
                 CurrentState = GS_WaitingForHandWave;
             } 
         }break;
@@ -320,7 +339,11 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
             if (ThisEvent.EventType == ES_TIMEOUT && ThisEvent.EventParam == TID_MODE_3S){
                 MC_RaiseAllToTop();
                 MC_DispenseTwoGearsOnce();                      // sweep min to max one time
-                LED_ShowMessage("WELCOME");
+                ES_Event_t ledEvt = {
+                                        .EventType = ES_LED_SHOW_MESSAGE,
+                                        .EventParam = (uint16_t)LED_MSG_WELCOME
+                                    };
+                PostLEDService(ledEvt);
                 CurrentState = GS_WaitingForHandWave;
             }
         }break;
@@ -416,12 +439,19 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                                 MC_DebugPrintAxes();
                                 break;
 
-                            case 'x':   // leave test mode, run actual game
-                                LED_ShowMessage("WELCOME");
+                            case 'x':{
+                                ES_Event_t ledEvt = {  // leave test mode, run actual game
+                                        .EventType = ES_LED_SHOW_MESSAGE,
+                                        .EventParam = (uint16_t)LED_MSG_WELCOME
+                                    };
+                                PostLEDService(ledEvt);
                                 CurrentState = GS_WaitingForHandWave;
                                 printf("Exiting TestMode and restarting motor Ctrl timer ? WaitingForHandWave\r\n");
                                 ES_Timer_StartTimer(TID_BALLOON_UPDATE);  // Restart MotorCtrl timer
-                                break;
+                                
+                                
+                            }break;  
+                                
                         }//switch (k)
                         
                 }break; //case ES_NEW_KEY:
@@ -485,116 +515,6 @@ static void GameHW_InitPins(void){
     ALS3_TRIS = 1; ALS3_ANSEL = 1;   // AN4  / RB2
     
     ADC_ConfigAutoScan(ADC_CHANSET);
-}
-
-static void LED_SPI_Init(void)
-{
-  // Basic SPI1 setup for MAX7219 dot-matrix
-  SPISetup_BasicConfig(SPI_SPI1);                        // default base config
-  SPISetup_SetLeader(SPI_SPI1, true);                    // PIC is the master
-
-  // Bit time: choose something reasonably fast
-  // Assuming PBCLK = 10MHz, a 100ns bit-time ? 10MHz SPI.
-  SPISetup_SetBitTime(SPI_SPI1, 100);                    // 100 ns / bit
-
-  SPISetup_MapSSOutput(SPI_SPI1, SPI_RPA0);              // RPA0: follower select
-  SPISetup_MapSDOutput(SPI_SPI1, SPI_RPA1);              // RPA1: SDO1
-
-  // Idle clock low, data on rising edge (CPOL=0, CPHA=0)
-  SPISetup_SetClockIdleState(SPI_SPI1, SPI_CLK_HI);          // SS active low, SCK idle low
-  SPISetup_SetActiveEdge(SPI_SPI1, SPI_SECOND_EDGE);                // data valid on rising edge
-
-  // 16-bit mode, no enhanced buffer
-  SPISetup_SetXferWidth(SPI_SPI1, SPI_16BIT);
-  SPISetEnhancedBuffer(SPI_SPI1, true);
-
-  SPISetup_EnableSPI(SPI_SPI1);
-}
-static void LED_BeginRenderDifficulty(uint8_t pct){
-    if (pct < 0) pct = 1; if (pct > 100) pct = 100;
-    char buf[4]; sprintf(buf, "%u", (unsigned)pct); //Convert difficulty into string
-
-    DM_ClearDisplayBuffer();                 // clear off-screen buffer
-
-    for (char *p = buf; *p; p++){ 
-      DM_AddChar2DisplayBuffer(*p);          // Add glyph into buffer 
-      DM_ScrollDisplayBuffer(4);             // space before each glyph 
-    }
-
-    g_LedPushPending = true;                 // mark that rows must be sent
-    // kick the first row push by posting a local event to ourselves
-    ES_Event_t e = { .EventType = ES_LED_PUSH_STEP};
-    PostGameSM(e);
-}
-
-static void LED_ShowScore(uint16_t score)
-{
-    char numBuf[6];  // enough for scores up to 65535
-    sprintf(numBuf, "%u", (unsigned)score);
-
-    DM_ClearDisplayBuffer();
-
-    // 1) Add prefix "SCORE: "
-    const char *prefix = "SC:";
-    for (const char *p = prefix; *p != '\0'; p++) {
-        DM_AddChar2DisplayBuffer((unsigned char)(*p));
-        DM_ScrollDisplayBuffer(4);   // spacing between chars
-    }
-
-    // 2) Add the numeric part
-    for (char *p = numBuf; *p != '\0'; p++) {
-        DM_AddChar2DisplayBuffer((unsigned char)(*p));
-        DM_ScrollDisplayBuffer(4);
-    }
-
-    // 3) Kick off non-blocking push to the physical display
-    g_LedPushPending = true;
-    ES_Event_t e = { .EventType = ES_LED_PUSH_STEP };
-    PostGameSM(e);
-}
-
-static void LED_ShowCountdown(uint8_t seconds_remaining){
-    // Render the remaining seconds as a decimal number on the 4-module display.
-    // This is non-blocking: we only update the frame buffer here and then
-    // kick off the ES_LED_PUSH_STEP mechanism to stream rows out via SPI.
-
-    char buf[4];  // enough for "60", "100", etc.
-    sprintf(buf, "%u", (unsigned)seconds_remaining);
-
-    // Clear off-screen buffer
-    DM_ClearDisplayBuffer();
-
-    // Add each digit and scroll a bit to space them
-    for (char *p = buf; *p != '\0'; p++) {
-        DM_AddChar2DisplayBuffer((unsigned char)*p);
-        DM_ScrollDisplayBuffer(4);   // 3 cols glyph + 1 col space
-    }
-
-    // Mark that rows need to be pushed to the hardware
-    g_LedPushPending = true;
-
-    // Kick the first non-blocking update step
-    ES_Event_t e = { .EventType = ES_LED_PUSH_STEP };
-    PostGameSM(e);
-}
-
-static void LED_ShowMessage(const char *msg)
-{
-    // Clear the off-screen frame buffer
-    DM_ClearDisplayBuffer();
-
-    // Build the text into the buffer
-    for (const char *p = msg; *p != '\0'; p++) {
-        DM_AddChar2DisplayBuffer((unsigned char)(*p));
-        DM_ScrollDisplayBuffer(4);   // spacing between chars
-    }
-
-    // Mark that a push to the physical display is required
-    g_LedPushPending = true;
-
-    // Kick the first row transfer using the ES_LED_PUSH_STEP mechanism
-    ES_Event_t e = { .EventType = ES_LED_PUSH_STEP };
-    PostGameSM(e);
 }
 
 static void CaptureALS_Baselines_Init(void){

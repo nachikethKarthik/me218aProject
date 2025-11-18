@@ -40,7 +40,7 @@
 // Service 0: GameSM
 // Service 1: MotorCtrl
 
-#define NUM_SERVICES 3
+#define NUM_SERVICES 4
 
 /****************************************************************************/
 // These are the definitions for Service 0, the lowest priority service.
@@ -54,7 +54,7 @@
 // the name of the run function
 #define SERV_0_RUN RunTestHarnessService0
 // How big should this services Queue be?
-#define SERV_0_QUEUE_SIZE 10
+#define SERV_0_QUEUE_SIZE 3
 
 /****************************************************************************/
 // The following sections are used to define the parameters for each of the
@@ -66,7 +66,7 @@
     #define SERV_1_HEADER      "GameSM.h"
     #define SERV_1_INIT        InitGameSM
     #define SERV_1_RUN         RunGameSM
-    #define SERV_1_QUEUE_SIZE  10
+    #define SERV_1_QUEUE_SIZE  5
 #endif
 
 /****************************************************************************/
@@ -76,32 +76,30 @@
     #define SERV_2_HEADER "MotorCtrl.h"
     #define SERV_2_INIT   InitMotorCtrl
     #define SERV_2_RUN    RunMotorCtrl
-    #define SERV_2_QUEUE_SIZE 10
+    #define SERV_2_QUEUE_SIZE 5
 
 #endif
 
 /****************************************************************************/
 // These are the definitions for Service 3
 #if NUM_SERVICES > 3
-// the header file with the public function prototypes
-#define SERV_3_HEADER "TestHarnessService3.h"
-// the name of the Init function
-#define SERV_3_INIT InitTestHarnessService3
-// the name of the run function
-#define SERV_3_RUN RunTestHarnessService3
-// How big should this services Queue be?
-#define SERV_3_QUEUE_SIZE 3
+
+#define SERV_3_HEADER      "LEDService.h"
+#define SERV_3_INIT        InitLEDService
+#define SERV_3_RUN         RunLEDService
+#define SERV_3_QUEUE_SIZE  5
+
 #endif
 
 /****************************************************************************/
 // These are the definitions for Service 4
 #if NUM_SERVICES > 4
 // the header file with the public function prototypes
-#define SERV_4_HEADER "TestHarnessService4.h"
+#define SERV_4_HEADER "TestHarnessService3.h"
 // the name of the Init function
-#define SERV_4_INIT InitTestHarnessService4
+#define SERV_4_INIT InitTestHarnessService3
 // the name of the run function
-#define SERV_4_RUN RunTestHarnessService4
+#define SERV_4_RUN RunTestHarnessService3
 // How big should this services Queue be?
 #define SERV_4_QUEUE_SIZE 3
 #endif
@@ -271,7 +269,12 @@ typedef enum
     NO_HIT_B2,                // 12
     NO_HIT_B3,                // 13
     ES_OBJECT_CRASHED,        // 14 any balloon hit floor
-    ES_LED_PUSH_STEP          // 15 internal LED row-push
+    
+    ES_LED_SHOW_MESSAGE,      // 15 EventParam: LED_MessageID_t
+    ES_LED_SHOW_SCORE,        // 16 EventParam: score (uint16_t)
+    ES_LED_SHOW_COUNTDOWN,    // 17 EventParam: seconds (0?60)
+    ES_LED_SHOW_DIFFICULTY,   // 18 EventParam: 0?100 %
+    ES_LED_PUSH_STEP          // 19 Internal LED row-push
 } ES_EventType_t;
 
 /****************************************************************************/

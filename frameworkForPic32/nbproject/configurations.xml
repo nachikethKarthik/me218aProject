@@ -51,6 +51,7 @@
       <itemPath>working_hals_libraries_and_fontstuff/PIC32_AD_Lib.h</itemPath>
       <itemPath>working_hals_libraries_and_fontstuff/PWM_PIC32.h</itemPath>
       <itemPath>ProjectHeaders/MotorCtrl.h</itemPath>
+      <itemPath>ProjectHeaders/LEDService.h</itemPath>
     </logicalFolder>
     <logicalFolder name="LinkerScript"
                    displayName="Linker Files"
@@ -69,6 +70,7 @@
       <itemPath>working_hals_libraries_and_fontstuff/PIC32_AD_Lib.c</itemPath>
       <itemPath>working_hals_libraries_and_fontstuff/PWM_PIC32.c</itemPath>
       <itemPath>ProjectSource/MotorCtrl.c</itemPath>
+      <itemPath>ProjectSource/LEDService.c</itemPath>
     </logicalFolder>
     <logicalFolder name="ExternalFiles"
                    displayName="Important Files"
