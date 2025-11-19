@@ -43,7 +43,7 @@
 // 437-2637 us for the SKU: 31318 HS-318 servo
 
 // B1 servo position (tunable parameter)
-#define B1_MIN_US      1000u
+#define B1_MIN_US      1510u
 #define B1_MAX_US      2000u
 
 #define B1_MIN_TICKS   SERVO_US_TO_TICKS(B1_MIN_US)
@@ -66,7 +66,7 @@
 
 
 // Gear servo positions (tunable parameter)
-#define GEAR_SERVO_DISPENSE_US      600u
+#define GEAR_SERVO_DISPENSE_US      800u
 #define GEAR_SERVO_REST_US  2000u
 
 /*---------------------------- Module Functions ---------------------------*/
