@@ -29,13 +29,21 @@
 #include "DM_Display.h"
 #include "FontStuff.h"
 #include "PIC32_SPI_HAL.h"
+#include "pic32Neopixel.h"
 /*----------------------------- Module Defines ----------------------------*/
+#define NEOPIXEL_GLOBAL_BRIGHTNESS  32  // nice and dim; tweak before flashing
+#define NUM_NEOPIXELS  122  // keep this synced with MAX_LEDS in pic32Neopixel.c
 
 /*---------------------------- Module Functions ---------------------------*/
 /* prototypes for private functions for this service.They should be functions
    relevant to the behavior of this service
 */
 static void LED_SPI_Init(void);
+static void LED_NeopixelInit(void);
+static uint8_t ScaleWithBrightness(uint8_t);
+static void LED_UpdateDifficultyNeopixels(uint8_t difficultyPercent);
+
+
 static void LED_RenderDifficulty(uint8_t pct);
 static void LED_RenderCountdown(uint8_t seconds_remaining);
 static void LED_RenderScore(uint16_t score);
@@ -45,6 +53,7 @@ static void LED_RenderMessage(LED_MessageID_t msgID);
 static uint8_t MyPriority;
 static bool    g_LedPushPending = false;
 static bool g_DisplayInitDone = false;
+static uint8_t LastDifficultyBucket = 0xFF; // invalid to force first update
 
 /*------------------------------ Module Code ------------------------------*/
 /****************************************************************************
@@ -73,6 +82,11 @@ bool InitLEDService(uint8_t Priority)
      *******************************************/
     // SPI + MAX7219 interface init
     LED_SPI_Init();
+    
+    // --- NeoPixel init & static pattern ---
+    neopixel_init();       // sets pin as output & low
+//    LED_NeopixelInit();    // sets all 122 pixels to your chosen color
+    
     // post the initial transition event
     ES_Event_t initEvent = { .EventType = ES_INIT };
     return ES_PostToService(MyPriority, initEvent);
@@ -172,8 +186,13 @@ ES_Event_t RunLEDService(ES_Event_t ThisEvent)
                 }
             }      
         }break;
-            
-            
+        
+        case ES_DIFFICULTY_CHANGED:{
+          uint8_t diffPct = (uint8_t)ThisEvent.EventParam;  // assuming 0?100
+          LED_UpdateDifficultyNeopixels(diffPct);
+        }break;
+          
+   
             
   }
   return ReturnEvent;
@@ -288,6 +307,86 @@ static void LED_RenderMessage(LED_MessageID_t msgID)
     PostLEDService(e);
 }
 
+static void LED_NeopixelInit(void)
+{
+    const int NUM_PIXELS = 123;   // keep in sync with MAX_LEDS in WS2812.c
+
+    neopixel_clear();
+
+    // Example: dim warm amber across the whole strip
+    uint8_t r = 0x10;
+    uint8_t g = 0x08;
+    uint8_t b = 0x00;
+
+    for (int i = 0; i < NUM_PIXELS; i++) {
+//        neopixel_set_pixel(i, r, g, b);
+        neopixel_set_pixel(i, 0x00, 0x00, 0x08);
+    }
+
+    // Blocking ~3?4 ms, but called only once at startup -> totally fine.
+    neopixel_show();
+}
+
+static uint8_t ScaleWithBrightness(uint8_t c)
+{
+    // c * brightness / 255 (integer math)
+    return (uint8_t)(((uint16_t)c * NEOPIXEL_GLOBAL_BRIGHTNESS) / 255);
+}
+
+static void LED_UpdateDifficultyNeopixels(uint8_t difficultyPercent)
+{
+    // bucket size = 15%; 0-14 -> 0, 15-29 -> 1, ..., 90-100 -> 6
+    uint8_t bucket = difficultyPercent / 15;
+    if (bucket > 6) bucket = 6;   // clamp
+
+    // Only update if the bucket changed (to avoid spamming neopixel_show)
+    if (bucket == LastDifficultyBucket) {
+        return;
+    }
+    LastDifficultyBucket = bucket;
+
+    // Choose base color per bucket (before brightness scaling)
+    uint8_t r_full = 0, g_full = 0, b_full = 0;
+
+    switch (bucket) {
+        case 0: // 0?14%: very easy -> dim green
+            r_full = 0x00; g_full = 0x40; b_full = 0x00;
+            break;
+        case 1: // 15?29%: green-ish
+            r_full = 0x10; g_full = 0x60; b_full = 0x00;
+            break;
+        case 2: // 30?44%: yellow-green
+            r_full = 0x30; g_full = 0x60; b_full = 0x00;
+            break;
+        case 3: // 45?59%: yellow
+            r_full = 0x50; g_full = 0x50; b_full = 0x00;
+            break;
+        case 4: // 60?74%: orange
+            r_full = 0x70; g_full = 0x30; b_full = 0x00;
+            break;
+        case 5: // 75?89%: deep orange/red
+            r_full = 0x90; g_full = 0x10; b_full = 0x00;
+            break;
+        case 6: // 90?100%: ?danger? red
+            r_full = 0xA0; g_full = 0x00; b_full = 0x00;
+            break;
+    }
+
+    // Apply global brightness
+    uint8_t r = ScaleWithBrightness(r_full);
+    uint8_t g = ScaleWithBrightness(g_full);
+    uint8_t b = ScaleWithBrightness(b_full);
+
+    // Fill strip with that color
+    neopixel_clear();
+    for (int i = 0; i < NUM_NEOPIXELS; i++) {
+        // If your driver expects GRB internally, this function should handle it.
+        // If you discover it's swapped, you can change the argument order here.
+        neopixel_set_pixel(i, r, g, b);
+    }
+
+    neopixel_show();   // ~3?4 ms blocking; only called when bucket changes
+}
 /*------------------------------- Footnotes -------------------------------*/
 /*------------------------------ End of file ------------------------------*/
 

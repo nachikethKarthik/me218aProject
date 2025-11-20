@@ -52,6 +52,7 @@
       <itemPath>working_hals_libraries_and_fontstuff/PWM_PIC32.h</itemPath>
       <itemPath>ProjectHeaders/MotorCtrl.h</itemPath>
       <itemPath>ProjectHeaders/LEDService.h</itemPath>
+      <itemPath>working_hals_libraries_and_fontstuff/pic32Neopixel.h</itemPath>
     </logicalFolder>
     <logicalFolder name="LinkerScript"
                    displayName="Linker Files"
@@ -71,6 +72,7 @@
       <itemPath>working_hals_libraries_and_fontstuff/PWM_PIC32.c</itemPath>
       <itemPath>ProjectSource/MotorCtrl.c</itemPath>
       <itemPath>ProjectSource/LEDService.c</itemPath>
+      <itemPath>working_hals_libraries_and_fontstuff/pic32Neopixel.c</itemPath>
     </logicalFolder>
     <logicalFolder name="ExternalFiles"
                    displayName="Important Files"
@@ -894,8 +896,6 @@
                   value="${memories.instruction.ram.ranges}"/>
         <property key="memories.programmemory" value="true"/>
         <property key="memories.programmemory.ranges" value="1d000000-1d03ffff"/>
-        <property key="programmerToGoFilePath"
-                  value="U:/karthi24/me218aProject/frameworkForPic32/debug/default/default_ptg"/>
         <property key="programoptions.donoteraseauxmem" value="false"/>
         <property key="programoptions.eraseb4program" value="true"/>
         <property key="programoptions.pgmentry.voltage" value="low"/>

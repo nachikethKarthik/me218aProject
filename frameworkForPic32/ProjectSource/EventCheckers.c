@@ -145,7 +145,7 @@ bool Check4Difficulty(void){
         uint16_t pct = (uint16_t)((raw * 100u) / 1024u);
 //        printf("%u\r\n",pct);
         ES_Event_t e = { .EventType = ES_DIFFICULTY_CHANGED, .EventParam = (pct) };
-        PostGameSM(e);
+        PostGameSM(e); PostLEDService(e);
         lastRaw = raw;
         return true;
     }

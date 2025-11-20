@@ -9,12 +9,12 @@
    Ege Turan
 ****************************************************************************/
 
-#include "WS2812.h"
+#include "pic32Neopixel.h"
 #include <xc.h>
 
-#define MAX_LEDS 5
-#define WS_PIN LATAbits.LATA4
-#define WS_TRIS TRISAbits.TRISA4
+#define MAX_LEDS 123
+#define WS_PIN  LATBbits.LATB5    // RPB5 output latch
+#define WS_TRIS TRISBbits.TRISB5  // RPB5 TRIS
 
 static uint8_t leds_buffer[MAX_LEDS * 3]; // LED data (G,R,B)
 
