@@ -102,6 +102,7 @@ bool Check4Keystroke(void)
 
 
 bool Check4HandWave(void){
+//    return false; // turns off the event checker. remove for final
     static uint8_t last = 1; // idle high (beam unbroken)
     uint8_t cur = BEAM_BREAK_PORT; // direct register read
 //    printf("beam break event checker\n");
@@ -118,7 +119,7 @@ bool Check4HandWave(void){
 }
  
 bool Check4Difficulty(void){
-    
+//    return false; // turns off the event checker. remove for final
 //    With the values configured in ADC_ConfigAutoScan, the ADC_MultiRead() array indices are :
 //            idx_AN4 = 0
 //            idx_AN5 = 1
@@ -142,6 +143,7 @@ bool Check4Difficulty(void){
     
     if (diff >= RAW_DEADBAND) { 
         uint16_t pct = (uint16_t)((raw * 100u) / 1024u);
+//        printf("%u\r\n",pct);
         ES_Event_t e = { .EventType = ES_DIFFICULTY_CHANGED, .EventParam = (pct) };
         PostGameSM(e);
         lastRaw = raw;
@@ -154,10 +156,13 @@ bool Check4Difficulty(void){
 
 
 bool Check4LaserHits(void){
+//    return false; // turns off the event checker. remove for final
     // Balloon mapping:
     //  B1 -> AN12 -> adc[3]
     //  B2 -> AN5  -> adc[1]
     //  B3 -> AN4  -> adc[0]
+    
+//    printf("Laser hits\r\n");
     
     static uint8_t isHit[3] = {0,0,0};   // 0 = no hit, 1 = hit
 
@@ -174,8 +179,8 @@ bool Check4LaserHits(void){
     // margins relative to baseline
     // when signal climbs above (baseline + HIT_DELTA) from below meaning a rising edge
     // when signal falls below (baseline + RELEASE_DELTA) from above meaning a falling edge
-    const uint16_t HIT_DELTA     = 100;   // (tuneable parameters)
-    const uint16_t RELEASE_DELTA = 60;   // (tuneable parameters)
+    const uint16_t HIT_DELTA     =80;   // (tuneable parameters) 100 50
+    const uint16_t RELEASE_DELTA = 40;   // (tuneable parameters) 60 10
 
     bool any = false;
 
@@ -185,8 +190,11 @@ bool Check4LaserHits(void){
         uint16_t loThresh = (uint16_t)(Baselines[i] + RELEASE_DELTA);
 
         if (isHit[i] == 0) {
-            // rising edge: NO HIT ? HIT
+            // rising edge: NO HIT to HIT
             if (v[i] > hiThresh) {
+                
+//                printf("Hit detected\r\n");
+                
                 isHit[i] = 1;
                 ES_Event_t e;
                 e.EventType = (DIRECT_HIT_B1 + i);
@@ -195,8 +203,9 @@ bool Check4LaserHits(void){
                 any = true;
             }
         } else {
-            // falling edge: HIT ? NO HIT
+            // falling edge: HIT to NO HIT
             if (v[i] < loThresh) {
+//                printf("No hit detected\r\n");
                 isHit[i] = 0;
                 ES_Event_t e;
                 e.EventType = (NO_HIT_B1 + i);

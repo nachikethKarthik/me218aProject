@@ -14,6 +14,7 @@
  History
  When           Who     What/Why
  -------------- ---     --------
+ 11/19/25   karthi24    Completed tuning of motor limits for final project
  11/17/25   karthi24    started minor functionality changes, scoring system, LED service, longer messages
  11/14/25   karthi24    completed integration testing
  11/12/25   karthi24    started conversion into final code
@@ -43,22 +44,22 @@
 // 437-2637 us for the SKU: 31318 HS-318 servo
 
 // B1 servo position (tunable parameter)
-#define B1_MIN_US      1510u
-#define B1_MAX_US      2000u
+#define B1_MIN_US      600 // ceiling
+#define B1_MAX_US      1250u //floor
 
 #define B1_MIN_TICKS   SERVO_US_TO_TICKS(B1_MIN_US)
 #define B1_MAX_TICKS   SERVO_US_TO_TICKS(B1_MAX_US)
 
 // B2 servo position (tunable parameter)
-#define B2_MIN_US      1000u
-#define B2_MAX_US      2000u
+#define B2_MIN_US      600
+#define B2_MAX_US      1250u
 
 #define B2_MIN_TICKS   SERVO_US_TO_TICKS(B2_MIN_US)
 #define B2_MAX_TICKS   SERVO_US_TO_TICKS(B2_MAX_US)
 
 // B3 servo position (tunable parameter)
-#define B3_MIN_US      1000u
-#define B3_MAX_US      2000u
+#define B3_MIN_US      600
+#define B3_MAX_US      1250u
 
 #define B3_MIN_TICKS   SERVO_US_TO_TICKS(B3_MIN_US)
 #define B3_MAX_TICKS   SERVO_US_TO_TICKS(B3_MAX_US)
@@ -129,13 +130,15 @@ bool InitMotorCtrl(uint8_t Priority)
     
     // Init balloon axes (you?ll tune these values)
     for (uint8_t i = 0; i < 3; i++){
-        Ax[i].floor_ticks   = minTicks[i];   // bottom for this balloon (ticks)
-        Ax[i].ceiling_ticks = maxTicks[i];   // top for this balloon (ticks)
+        Ax[i].floor_ticks   = maxTicks[i];   // bottom for this balloon (ticks)
+        Ax[i].ceiling_ticks = minTicks[i];   // top for this balloon (ticks)
 
         Ax[i].pos_ticks     = Ax[i].ceiling_ticks; // start all at top
         Ax[i].tgt_ticks     = Ax[i].ceiling_ticks;
         Ax[i].max_step      = 50;                  // will be overridden by MC_SetDifficultyPercent
     }
+    
+//    printf("Initializing motor control\r\n");
     /********************************************
     in here you write your initialization code
     *******************************************/
@@ -201,10 +204,10 @@ ES_Event_t RunMotorCtrl(ES_Event_t ThisEvent)
                 Ax[i].pos_ticks += delta;
 
                 // Clamp into this balloon's calibrated tick range
-                if (Ax[i].pos_ticks < Ax[i].floor_ticks){
+                if (Ax[i].pos_ticks > Ax[i].floor_ticks){
                     Ax[i].pos_ticks = Ax[i].floor_ticks;
                 }
-                if (Ax[i].pos_ticks > Ax[i].ceiling_ticks){
+                if (Ax[i].pos_ticks < Ax[i].ceiling_ticks){
                     Ax[i].pos_ticks = Ax[i].ceiling_ticks;
                 }
 
@@ -212,7 +215,7 @@ ES_Event_t RunMotorCtrl(ES_Event_t ThisEvent)
                 PWMOperate_SetPulseWidthOnChannel((uint16_t)Ax[i].pos_ticks, chan[i]);
 
                 // Crash detect at floor - similar to event checker // only for B1 for now, change for all three balloons later 
-                if ((Ax[i].pos_ticks <= Ax[i].floor_ticks) && (!g_crashed)){
+                if ((Ax[i].pos_ticks >= Ax[i].floor_ticks) && (!g_crashed)){
                     g_crashed = true; // only check for crash if none have crashed
                     ES_Event_t crash = { .EventType = ES_OBJECT_CRASHED };
                     PostGameSM(crash);
@@ -239,8 +242,8 @@ ES_Event_t RunMotorCtrl(ES_Event_t ThisEvent)
  ***************************************************************************/
 void MC_SetDifficultyPercent(uint8_t pct){
     
-    const int32_t MIN_STEP_TICKS = 10;    // very easy / slow motion tunable parameter
-    const int32_t MAX_STEP_TICKS = 50;   // very hard / fast motion tunable parameter
+    const int32_t MIN_STEP_TICKS = 5;    // very easy / slow motion tunable parameter
+    const int32_t MAX_STEP_TICKS = 20;   // very hard / fast motion tunable parameter
 
     // Map 1->100% linearly into [MIN_STEP_TICKS to MAX_STEP_TICKS]
     // Using 99 in the denominator so that pct=1 -> MIN, pct=100 -> MAX exactly.

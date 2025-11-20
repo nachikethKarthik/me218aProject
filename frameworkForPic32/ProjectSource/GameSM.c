@@ -14,6 +14,7 @@
  History
  When           Who     What/Why
  -------------- ---     --------
+ 11/19/25   karthi24    Completed tuning of motor limits for final project
  11/17/25   karthi24    started minor functionality changes, scoring system, LED service, longer messages
  11/14/25   karthi24    completed integration testing
  11/13/25   karthi24    began integration testing
@@ -102,6 +103,7 @@ bool InitGameSM(uint8_t Priority)
     
     GameHW_InitPins();
     
+    
     #ifdef START_IN_TEST_MODE
     CurrentState = GS_TestMode;
     #else
@@ -152,6 +154,7 @@ bool PostGameSM(ES_Event_t ThisEvent)
 ****************************************************************************/
 ES_Event_t RunGameSM(ES_Event_t ThisEvent)
 {
+    printf("Entering Run function because of event: %lu\r\n", ThisEvent.EventType);
     ES_Event_t ReturnEvent = { .EventType = ES_NO_EVENT };
 //     printf("Entering RunGameSM because of event: %lu\r\n", ThisEvent.EventType);
     // Global handler: row-by-row LED update: handled regardless of CurrentState
@@ -351,7 +354,7 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
         case GS_TestMode: {
             // entering calibration mode this stops motor ctrl:
             ES_Timer_StopTimer(TID_BALLOON_UPDATE);  // MotorCtrl won?t run updates 
-            printf("Entering test mode because of event: %lu\r\n", ThisEvent.EventType);
+            
             switch (ThisEvent.EventType) {
                 case ES_NEW_KEY: {
                         char k = (char)ThisEvent.EventParam;
@@ -359,7 +362,8 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                         switch (k) {
                             
                             case '1':
-                                printf("testing the GS_WaitingForHandWave state\r\n");
+                                printf("setting als sensor baselines\r\n");
+                                CaptureALS_Baselines_Init();
                                 
                                 break;
                             
@@ -369,8 +373,10 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                                        BEAM_BREAK_PORT);
                                 break;
                             
-                            case '3':{   // Check4LaserHits event checker test
-                                // read ADCs once and print
+                            case '3':{   // 
+                                //
+                                
+                                MC_RaiseAllToTop();
                                 
                                 
                             }break;
@@ -380,11 +386,11 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                                 printf("testing servo motors\r\n");
                                 // 500-2500 us for the SKU: 2000-0025-0504 super speed servo
                                 // 437-2637 us for the SKU: 31318 HS-318 servo
-                                static uint16_t TestPulseUs    = 1500; // 500-2500 us for the SKU: 2000-0025-0504 super speed
+                                static uint16_t TestPulseUs    = 550; // 500-2500 us for the SKU: 2000-0025-0504 super speed
                                 uint16_t ticks = SERVO_US_TO_TICKS(TestPulseUs);
                                 
-                                printf("Commanding Channel 3 OC3 pin 10. Motor for B1. Commanding it to pwm microsecond value %lu\r\n", TestPulseUs);
-                                PWMOperate_SetPulseWidthOnChannel(ticks, B3_SERVO_CHANNEL);
+                                printf("Commanding Channel 3 OC3 pin 10. Motor for B2. Commanding it to pwm microsecond value %lu\r\n", TestPulseUs);
+                                PWMOperate_SetPulseWidthOnChannel(ticks, B1_SERVO_CHANNEL);
                                 // similar print state
                                 break;
                             
@@ -438,7 +444,15 @@ ES_Event_t RunGameSM(ES_Event_t ThisEvent)
                             case 'd':   // dump positions
                                 MC_DebugPrintAxes();
                                 break;
-
+                            
+                            case 'l':{
+                                ES_Event_t ledEvt = {  // leave test mode, run actual game
+                                        .EventType = ES_LED_SHOW_MESSAGE,
+                                        .EventParam = (uint16_t)LED_MSG_WELCOME
+                                    };
+                                PostLEDService(ledEvt);
+                            }break;
+                            
                             case 'x':{
                                 ES_Event_t ledEvt = {  // leave test mode, run actual game
                                         .EventType = ES_LED_SHOW_MESSAGE,
@@ -536,6 +550,6 @@ static void CaptureALS_Baselines_Init(void){
     uint16_t b12 = (uint16_t)(sum_an12 / N);
     uint16_t b5  = (uint16_t)(sum_an5  / N);
     uint16_t b4  = (uint16_t)(sum_an4  / N);
-
+    printf("baselines are %u, %u, and %u\r\n", b12,b5,b4);
     Targets_SetBaselines(b12, b5, b4);
 }
